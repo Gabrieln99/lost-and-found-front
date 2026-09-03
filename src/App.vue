@@ -1,6 +1,14 @@
 <script setup>
+import { onMounted } from 'vue'
 import { RouterLink, RouterView } from 'vue-router'
 import HelloWorld from './components/HelloWorld.vue'
+import ConnectWallet from './components/ConnectWallet.vue'
+import { useWalletStore } from '@/stores/wallet'
+
+const wallet = useWalletStore()
+onMounted(() => {
+  wallet.autoConnect()
+})
 </script>
 
 <template>
@@ -15,6 +23,8 @@ import HelloWorld from './components/HelloWorld.vue'
         <RouterLink to="/about">About</RouterLink>
       </nav>
     </div>
+
+    <ConnectWallet />
   </header>
 
   <RouterView />
