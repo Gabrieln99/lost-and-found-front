@@ -5,9 +5,10 @@ import LostAndFoundAbi from '@/abi/LostAndFound.json'
 // "abi" field here whenever the contract's public interface changes.
 export const CONTRACT_ABI = LostAndFoundAbi
 
-// Empty until the contract is deployed to Sepolia (see CLAUDE.md: no
-// deploy pipeline exists yet). Wallet-connect works without this; any
-// future contract read/write must check isContractConfigured first.
+// Set via VITE_CONTRACT_ADDRESS (see .env.example / deployments/sepolia.json
+// in lost-and-found-back). Falls back to empty so the app still runs (wallet
+// connection works regardless); any contract read/write must check
+// isContractConfigured first.
 export const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS || ''
 
 export const isContractConfigured = Boolean(CONTRACT_ADDRESS)
