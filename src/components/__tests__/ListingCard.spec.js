@@ -230,4 +230,53 @@ describe('ListingCard - Report Found', () => {
     expect(waitForReportFoundReceipt).not.toHaveBeenCalled()
     expect(wrapper.find('button.report-found-button').attributes('disabled')).toBeUndefined()
   })
+
+  // Regression test for a real bug: the button used to get stuck showing
+  // "Waiting for you to confirm in your wallet..." after the user
+  // cancelled/rejected the MetaMask prompt (e.g. clicked the popup's X or
+  // Cancel), instead of resetting back to a clickable state. The card
+  // itself just needs to treat any rejection from sendReportFoundTx --
+  // whatever its origin -- as a signal to leave the awaiting-signature
+  // state; the underlying fix for wallets that never respond at all lives
+  // in listingContract.js's wallet-response timeout (see its own spec).
+  it('resets the button from "waiting for signature" back to a usable state when the user cancels the MetaMask prompt', async () => {
+    connectWallet()
+
+    // A controllable pending promise stands in for the real wallet
+    // signature request, so the awaiting-signature state can actually be
+    // observed before it settles (a pre-rejected mock settles too fast to
+    // ever render an intermediate state).
+    let rejectSignatureRequest
+    sendReportFoundTx.mockReturnValue(
+      new Promise((_resolve, reject) => {
+        rejectSignatureRequest = reject
+      }),
+    )
+
+    const wrapper = mount(ListingCard, { props: { listing: baseListing() } })
+    await flushPromises()
+
+    wrapper.find('button.report-found-button').trigger('click')
+    await flushPromises()
+
+    // Mid-flight: the button should reflect the awaiting-signature state.
+    expect(wrapper.find('button.report-found-button').text()).toContain(
+      'Waiting for you to confirm in your wallet',
+    )
+    expect(wrapper.find('button.report-found-button').attributes('disabled')).toBeDefined()
+
+    // Simulate the user cancelling/rejecting the MetaMask prompt.
+    rejectSignatureRequest(new ListingContractError('Transaction was rejected in your wallet.'))
+    for (let i = 0; i < 5; i++) {
+      await flushPromises()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    }
+
+    // After the rejection settles, the button must return to normal --
+    // not stay stuck on the waiting-for-signature copy.
+    const button = wrapper.find('button.report-found-button')
+    expect(button.text()).toBe('Report Found')
+    expect(button.attributes('disabled')).toBeUndefined()
+    expect(wrapper.text()).toContain('Transaction was rejected in your wallet.')
+  })
 })

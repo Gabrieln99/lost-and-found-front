@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   sendCreateListingTx,
   waitForListingReceipt,
@@ -7,6 +7,7 @@ import {
   sendReportFoundTx,
   waitForReportFoundReceipt,
   ListingContractError,
+  WALLET_RESPONSE_TIMEOUT_MS,
 } from '../listingContract'
 
 function makeContract({ createListing, parseLog, listingCount, listings, reportFound } = {}) {
@@ -81,6 +82,19 @@ describe('sendCreateListingTx', () => {
     await expect(
       sendCreateListingTx(contract, { cid: 'bafy', rewardWei: 1n }),
     ).rejects.toThrow('insufficient funds')
+  })
+
+  it('rejects promptly on a raw (not ethers-wrapped) EIP-1193 rejection, instead of hanging', async () => {
+    // A raw injected-provider rejection shape, as opposed to the
+    // ethers-wrapped { code: 'ACTION_REJECTED' } shape covered above.
+    const createListing = vi
+      .fn()
+      .mockRejectedValue({ code: 4001, message: 'User rejected the request.' })
+    const contract = makeContract({ createListing })
+
+    await expect(
+      sendCreateListingTx(contract, { cid: 'bafy', rewardWei: 1n }),
+    ).rejects.toThrow('User rejected the request.')
   })
 })
 
@@ -248,6 +262,63 @@ describe('sendReportFoundTx', () => {
     const contract = makeContract({ reportFound })
 
     await expect(sendReportFoundTx(contract, 0)).rejects.toThrow('Owner cannot report own listing')
+  })
+
+  it('rejects promptly on a raw (not ethers-wrapped) EIP-1193 rejection, instead of hanging', async () => {
+    const reportFound = vi
+      .fn()
+      .mockRejectedValue({ code: 4001, message: 'User rejected the request.' })
+    const contract = makeContract({ reportFound })
+
+    await expect(sendReportFoundTx(contract, 0)).rejects.toThrow('User rejected the request.')
+  })
+})
+
+// Regression coverage for a real bug: if the wallet's confirmation popup is
+// dismissed in a way that doesn't emit an EIP-1193 rejection (e.g. closed
+// via the popup window's own close control rather than an explicit
+// Approve/Reject), the underlying request promise never settles. Without a
+// timeout, awaiting it hangs forever and the UI stays stuck showing
+// "waiting for you to confirm in your wallet" indefinitely.
+describe('wallet response timeout', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('sendCreateListingTx eventually rejects if the wallet never responds', async () => {
+    const createListing = vi.fn().mockReturnValue(new Promise(() => {})) // never settles
+    const contract = makeContract({ createListing })
+
+    const pending = sendCreateListingTx(contract, { cid: 'bafy', rewardWei: 1n })
+    const advance = vi.advanceTimersByTimeAsync(WALLET_RESPONSE_TIMEOUT_MS)
+
+    await expect(pending).rejects.toThrow('No response from your wallet')
+    await advance
+  })
+
+  it('sendReportFoundTx eventually rejects if the wallet never responds', async () => {
+    const reportFound = vi.fn().mockReturnValue(new Promise(() => {})) // never settles
+    const contract = makeContract({ reportFound })
+
+    const pending = sendReportFoundTx(contract, 0)
+    const advance = vi.advanceTimersByTimeAsync(WALLET_RESPONSE_TIMEOUT_MS)
+
+    await expect(pending).rejects.toThrow('No response from your wallet')
+    await advance
+  })
+
+  it('does not time out once the wallet responds before the deadline', async () => {
+    const tx = {}
+    const reportFound = vi.fn().mockResolvedValue(tx)
+    const contract = makeContract({ reportFound })
+
+    const result = await sendReportFoundTx(contract, 0)
+
+    expect(result).toBe(tx)
   })
 })
 
