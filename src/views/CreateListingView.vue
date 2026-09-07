@@ -17,6 +17,11 @@ const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024
 const wallet = useWalletStore()
 
 const validationSchema = {
+  title(value) {
+    if (!value || !value.trim()) return 'Title is required.'
+    if (value.length > 100) return 'Title must be 100 characters or fewer.'
+    return true
+  },
   description(value) {
     if (!value || !value.trim()) return 'Description is required.'
     if (value.length > 500) return 'Description must be 500 characters or fewer.'
@@ -44,6 +49,7 @@ const validationSchema = {
 
 const { handleSubmit, resetForm } = useForm({ validationSchema })
 
+const { value: title, errorMessage: titleError } = useField('title')
 const { value: description, errorMessage: descriptionError } = useField('description')
 const { value: location, errorMessage: locationError } = useField('location')
 const { value: reward, errorMessage: rewardError } = useField('reward')
@@ -118,6 +124,7 @@ const onSubmit = handleSubmit(async (values) => {
     status.value = 'uploading-image'
     const cid = await uploadListingMetadata({
       file: imageFile.value,
+      title: values.title,
       description: values.description,
       location: values.location,
     })
@@ -157,6 +164,12 @@ const onSubmit = handleSubmit(async (values) => {
     <h1>Publish a lost-item listing</h1>
 
     <form novalidate @submit="onSubmit">
+      <div class="field">
+        <label for="title">Title</label>
+        <input id="title" v-model="title" type="text" maxlength="100" placeholder="e.g. Lost wallet" />
+        <p v-if="titleError" class="field-error">{{ titleError }}</p>
+      </div>
+
       <div class="field">
         <label for="description">Description</label>
         <textarea id="description" v-model="description" rows="3" maxlength="500" />

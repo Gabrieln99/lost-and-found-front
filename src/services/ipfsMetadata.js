@@ -3,10 +3,10 @@ import { resolveIpfsUri } from '@/config/ipfs'
 export class IpfsMetadataError extends Error {}
 
 /**
- * Fetches a listing's metadata JSON (description, location, image) from
- * IPFS via a public gateway, given the CID stored on-chain as itemCID.
+ * Fetches a listing's metadata JSON (title, description, location, image)
+ * from IPFS via a public gateway, given the CID stored on-chain as itemCID.
  * @param {string} cid
- * @returns {Promise<{ description: string, location: string, image: string|null }>}
+ * @returns {Promise<{ title: string, description: string, location: string, image: string|null }>}
  */
 export async function fetchListingMetadata(cid) {
   const url = resolveIpfsUri(cid)
@@ -33,6 +33,8 @@ export async function fetchListingMetadata(cid) {
   }
 
   return {
+    // title may be absent on listings created before this field existed.
+    title: data.title ?? '',
     description: data.description ?? '',
     location: data.location ?? '',
     image: resolveIpfsUri(data.image),

@@ -31,6 +31,7 @@ function connectWallet(overrides = {}) {
 }
 
 async function fillValidForm(wrapper) {
+  await wrapper.find('#title').setValue('Lost cat')
   await wrapper.find('#description').setValue('Lost cat, orange tabby')
   await wrapper.find('#location').setValue('Central Park, near the fountain')
   await wrapper.find('#reward').setValue('0.05')
@@ -71,6 +72,7 @@ describe('CreateListingView', () => {
 
     await submitAndSettle(wrapper)
 
+    expect(wrapper.text()).toContain('Title is required.')
     expect(wrapper.text()).toContain('Description is required.')
     expect(wrapper.text()).toContain('Location is required.')
     expect(wrapper.text()).toContain('Reward is required.')
@@ -115,6 +117,7 @@ describe('CreateListingView', () => {
 
     expect(uploadListingMetadata).toHaveBeenCalledWith({
       file,
+      title: 'Lost cat',
       description: 'Lost cat, orange tabby',
       location: 'Central Park, near the fountain',
     })
