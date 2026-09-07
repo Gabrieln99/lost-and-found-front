@@ -3,7 +3,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 
 vi.mock('@/services/storageService', () => ({
-  uploadImage: vi.fn(),
+  uploadListingMetadata: vi.fn(),
   StorageServiceError: class StorageServiceError extends Error {},
 }))
 
@@ -15,7 +15,7 @@ vi.mock('@/services/listingContract', () => ({
 
 import CreateListingView from '../CreateListingView.vue'
 import { useWalletStore } from '@/stores/wallet'
-import { uploadImage, StorageServiceError } from '@/services/storageService'
+import { uploadListingMetadata, StorageServiceError } from '@/services/storageService'
 import {
   sendCreateListingTx,
   waitForListingReceipt,
@@ -103,7 +103,7 @@ describe('CreateListingView', () => {
   it('uploads the image and calls the contract on a valid submit', async () => {
     const store = connectWallet()
 
-    uploadImage.mockResolvedValue('bafytestcid')
+    uploadListingMetadata.mockResolvedValue('bafymetadatacid')
     const fakeTx = {}
     sendCreateListingTx.mockResolvedValue(fakeTx)
     waitForListingReceipt.mockResolvedValue({ listingId: 3n, transactionHash: '0xabc' })
@@ -113,10 +113,14 @@ describe('CreateListingView', () => {
 
     await submitAndSettle(wrapper)
 
-    expect(uploadImage).toHaveBeenCalledWith(file)
+    expect(uploadListingMetadata).toHaveBeenCalledWith({
+      file,
+      description: 'Lost cat, orange tabby',
+      location: 'Central Park, near the fountain',
+    })
     expect(sendCreateListingTx).toHaveBeenCalledWith(
       store.contract,
-      expect.objectContaining({ cid: 'bafytestcid' }),
+      expect.objectContaining({ cid: 'bafymetadatacid' }),
     )
     expect(waitForListingReceipt).toHaveBeenCalledWith(store.contract, fakeTx)
     expect(wrapper.text()).toContain('Listing published!')
@@ -125,7 +129,7 @@ describe('CreateListingView', () => {
 
   it('shows an error and does not call the contract when the upload fails', async () => {
     connectWallet()
-    uploadImage.mockRejectedValue(new StorageServiceError('Pinata is down'))
+    uploadListingMetadata.mockRejectedValue(new StorageServiceError('Pinata is down'))
 
     const wrapper = mount(CreateListingView)
     await fillValidForm(wrapper)
@@ -138,7 +142,7 @@ describe('CreateListingView', () => {
 
   it('shows an error when the wallet rejects the transaction', async () => {
     connectWallet()
-    uploadImage.mockResolvedValue('bafytestcid')
+    uploadListingMetadata.mockResolvedValue('bafymetadatacid')
     sendCreateListingTx.mockRejectedValue(
       new ListingContractError('Transaction was rejected in your wallet.'),
     )

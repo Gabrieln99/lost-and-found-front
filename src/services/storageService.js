@@ -2,24 +2,16 @@ import { STORAGE_SERVICE_URL } from '@/config/storage'
 
 export class StorageServiceError extends Error {}
 
-/**
- * Uploads an image file to the storage service and returns its IPFS CID.
- * @param {File} file
- * @returns {Promise<string>}
- */
-export async function uploadImage(file) {
+async function postMultipart(path, formData) {
   if (!STORAGE_SERVICE_URL) {
     throw new StorageServiceError(
       'Storage service URL is not configured (VITE_STORAGE_SERVICE_URL).',
     )
   }
 
-  const formData = new FormData()
-  formData.append('file', file, file.name)
-
   let response
   try {
-    response = await fetch(`${STORAGE_SERVICE_URL}/upload`, {
+    response = await fetch(`${STORAGE_SERVICE_URL}${path}`, {
       method: 'POST',
       body: formData,
     })
@@ -44,4 +36,31 @@ export async function uploadImage(file) {
   }
 
   return body.cid
+}
+
+/**
+ * Uploads a raw image file to the storage service and returns its IPFS CID.
+ * @param {File} file
+ * @returns {Promise<string>}
+ */
+export async function uploadImage(file) {
+  const formData = new FormData()
+  formData.append('file', file, file.name)
+  return postMultipart('/upload', formData)
+}
+
+/**
+ * Uploads an image plus description/location to the storage service, which
+ * bundles them into a JSON metadata document on Pinata and returns that
+ * document's CID -- this is the CID that goes on-chain as createListing's
+ * itemCID, not the raw image's.
+ * @param {{ file: File, description: string, location: string }} params
+ * @returns {Promise<string>}
+ */
+export async function uploadListingMetadata({ file, description, location }) {
+  const formData = new FormData()
+  formData.append('file', file, file.name)
+  formData.append('description', description)
+  formData.append('location', location)
+  return postMultipart('/listing-metadata', formData)
 }

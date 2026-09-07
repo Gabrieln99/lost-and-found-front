@@ -3,7 +3,7 @@ import { ref, computed } from 'vue'
 import { useForm, useField } from 'vee-validate'
 import { parseEther } from 'ethers'
 import { useWalletStore } from '@/stores/wallet'
-import { uploadImage, StorageServiceError } from '@/services/storageService'
+import { uploadListingMetadata, StorageServiceError } from '@/services/storageService'
 import {
   sendCreateListingTx,
   waitForListingReceipt,
@@ -91,7 +91,7 @@ const walletBlockReason = computed(() => {
 const statusMessage = computed(() => {
   switch (status.value) {
     case 'uploading-image':
-      return 'Uploading image...'
+      return 'Uploading photo and details...'
     case 'awaiting-signature':
       return 'Waiting for you to confirm in your wallet...'
     case 'awaiting-confirmation':
@@ -116,7 +116,11 @@ const onSubmit = handleSubmit(async (values) => {
 
   try {
     status.value = 'uploading-image'
-    const cid = await uploadImage(imageFile.value)
+    const cid = await uploadListingMetadata({
+      file: imageFile.value,
+      description: values.description,
+      location: values.location,
+    })
 
     const rewardWei = parseEther(String(values.reward))
     const expirationTimestamp = values.expirationDate
