@@ -50,16 +50,17 @@ export async function uploadImage(file) {
 }
 
 /**
- * Uploads an image plus description/location to the storage service, which
- * bundles them into a JSON metadata document on Pinata and returns that
- * document's CID -- this is the CID that goes on-chain as createListing's
- * itemCID, not the raw image's.
- * @param {{ file: File, description: string, location: string }} params
+ * Uploads an image plus title/description/location to the storage service,
+ * which bundles them into a JSON metadata document on Pinata and returns
+ * that document's CID -- this is the CID that goes on-chain as
+ * createListing's itemCID, not the raw image's.
+ * @param {{ file: File, title: string, description: string, location: string }} params
  * @returns {Promise<string>}
  */
-export async function uploadListingMetadata({ file, description, location }) {
+export async function uploadListingMetadata({ file, title, description, location }) {
   const formData = new FormData()
   formData.append('file', file, file.name)
+  formData.append('title', title)
   formData.append('description', description)
   formData.append('location', location)
   return postMultipart('/listing-metadata', formData)

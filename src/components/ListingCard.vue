@@ -50,11 +50,12 @@ onMounted(async () => {
         <p class="item-cid">CID: {{ listing.itemCID }}</p>
       </template>
       <template v-else>
-        <p class="description">{{ metadata.description }}</p>
-        <p class="location">{{ metadata.location }}</p>
+        <h3 v-if="metadata.title" class="title">{{ metadata.title }}</h3>
+        <p class="description"><strong>Description:</strong> {{ metadata.description }}</p>
+        <p class="location"><strong>Location:</strong> {{ metadata.location }}</p>
       </template>
 
-      <p class="reward">Reward: {{ rewardEth }} ETH</p>
+      <p class="reward"><strong>Reward:</strong> {{ rewardEth }} ETH</p>
     </div>
   </article>
 </template>
@@ -130,6 +131,11 @@ onMounted(async () => {
 .listing-card.status-cancelled,
 .listing-card.status-resolved {
   opacity: 0.7;
+}
+
+.title {
+  margin: 0;
+  font-size: 1rem;
 }
 
 .metadata-error {

@@ -35,9 +35,10 @@ describe('ListingCard', () => {
     expect(wrapper.text()).toContain('Loading details')
   })
 
-  it('renders description, location, image, reward, and status once loaded', async () => {
+  it('renders title, description, location, image, reward, and status once loaded', async () => {
     fetchListingMetadata.mockResolvedValue({
-      description: 'Lost cat',
+      title: 'Lost wallet',
+      description: 'Titan-colored wallet',
       location: 'Central Park',
       image: 'https://gateway.pinata.cloud/ipfs/bafyimagecid',
     })
@@ -46,13 +47,44 @@ describe('ListingCard', () => {
     await flushPromises()
 
     expect(fetchListingMetadata).toHaveBeenCalledWith('bafymetadatacid')
-    expect(wrapper.text()).toContain('Lost cat')
+    expect(wrapper.find('h3.title').text()).toBe('Lost wallet')
+    expect(wrapper.text()).toContain('Titan-colored wallet')
     expect(wrapper.text()).toContain('Central Park')
     expect(wrapper.text()).toContain('0.01 ETH')
     expect(wrapper.text()).toContain('Open')
     expect(wrapper.find('img').attributes('src')).toBe(
       'https://gateway.pinata.cloud/ipfs/bafyimagecid',
     )
+  })
+
+  it('labels each field so values are self-explanatory, not raw text', async () => {
+    fetchListingMetadata.mockResolvedValue({
+      title: 'Lost wallet',
+      description: 'Titan-colored wallet',
+      location: 'Central Park',
+      image: null,
+    })
+
+    const wrapper = mount(ListingCard, { props: { listing: baseListing() } })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Description:')
+    expect(wrapper.text()).toContain('Location:')
+    expect(wrapper.text()).toContain('Reward:')
+  })
+
+  it('omits the title heading when older metadata has no title field', async () => {
+    fetchListingMetadata.mockResolvedValue({
+      title: '',
+      description: 'Old-format listing with no title',
+      location: 'Central Park',
+      image: null,
+    })
+
+    const wrapper = mount(ListingCard, { props: { listing: baseListing() } })
+    await flushPromises()
+
+    expect(wrapper.find('h3.title').exists()).toBe(false)
   })
 
   it('shows an error and the raw CID when metadata fails to load, without crashing', async () => {

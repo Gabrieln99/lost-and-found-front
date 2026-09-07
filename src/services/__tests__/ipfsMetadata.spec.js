@@ -15,11 +15,12 @@ describe('fetchListingMetadata', () => {
     vi.stubGlobal('fetch', vi.fn())
   })
 
-  it('returns description/location/image resolved from the gateway', async () => {
+  it('returns title/description/location/image resolved from the gateway', async () => {
     fetch.mockResolvedValue({
       ok: true,
       status: 200,
       json: async () => ({
+        title: 'Lost wallet',
         description: 'Lost cat',
         location: 'Central Park',
         image: 'ipfs://bafyimagecid',
@@ -30,18 +31,19 @@ describe('fetchListingMetadata', () => {
 
     expect(fetch).toHaveBeenCalledWith('https://gateway.pinata.cloud/ipfs/bafymetadatacid')
     expect(metadata).toEqual({
+      title: 'Lost wallet',
       description: 'Lost cat',
       location: 'Central Park',
       image: 'https://gateway.pinata.cloud/ipfs/bafyimagecid',
     })
   })
 
-  it('defaults missing description/location to empty strings and image to null', async () => {
+  it('defaults missing title/description/location to empty strings and image to null', async () => {
     fetch.mockResolvedValue({ ok: true, status: 200, json: async () => ({}) })
 
     const metadata = await fetchListingMetadata('bafymetadatacid')
 
-    expect(metadata).toEqual({ description: '', location: '', image: null })
+    expect(metadata).toEqual({ title: '', description: '', location: '', image: null })
   })
 
   it('throws when the CID is empty', async () => {
