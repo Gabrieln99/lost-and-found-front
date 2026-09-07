@@ -2,15 +2,31 @@ import { describe, it, expect, vi } from 'vitest'
 import {
   sendCreateListingTx,
   waitForListingReceipt,
+  fetchAllListings,
   ListingContractError,
 } from '../listingContract'
 
-function makeContract({ createListing, parseLog } = {}) {
+function makeContract({ createListing, parseLog, listingCount, listings } = {}) {
   return {
     createListing: createListing ?? vi.fn(),
     interface: {
       parseLog: parseLog ?? vi.fn(),
     },
+    listingCount: listingCount ?? vi.fn(),
+    listings: listings ?? vi.fn(),
+  }
+}
+
+function rawListing(overrides = {}) {
+  return {
+    owner: '0xOwner0000000000000000000000000000000001',
+    finder: '0x0000000000000000000000000000000000000000',
+    reward: 1000000000000000n,
+    itemCID: 'bafytestcid',
+    status: 0,
+    createdAt: 1700000000n,
+    expirationTimestamp: 0n,
+    ...overrides,
   }
 }
 
@@ -114,5 +130,66 @@ describe('waitForListingReceipt', () => {
     const tx = { wait: vi.fn().mockRejectedValue(new Error('reverted')) }
 
     await expect(waitForListingReceipt(contract, tx)).rejects.toThrow(ListingContractError)
+  })
+})
+
+describe('fetchAllListings', () => {
+  it('throws when no contract instance is provided', async () => {
+    await expect(fetchAllListings(null)).rejects.toThrow(ListingContractError)
+  })
+
+  it('returns an empty array when listingCount is 0', async () => {
+    const contract = makeContract({ listingCount: vi.fn().mockResolvedValue(0n) })
+
+    const result = await fetchAllListings(contract)
+
+    expect(result).toEqual([])
+  })
+
+  it('reads every listing from 0 to listingCount - 1', async () => {
+    const listings = vi.fn().mockImplementation((id) =>
+      Promise.resolve(rawListing({ itemCID: `bafy-${id}` })),
+    )
+    const contract = makeContract({
+      listingCount: vi.fn().mockResolvedValue(3n),
+      listings,
+    })
+
+    const result = await fetchAllListings(contract)
+
+    expect(listings).toHaveBeenCalledTimes(3)
+    expect(listings).toHaveBeenCalledWith(0)
+    expect(listings).toHaveBeenCalledWith(1)
+    expect(listings).toHaveBeenCalledWith(2)
+    expect(result.map((l) => l.id)).toEqual([0, 1, 2])
+    expect(result.map((l) => l.itemCID)).toEqual(['bafy-0', 'bafy-1', 'bafy-2'])
+  })
+
+  it('normalizes the status enum to a plain number', async () => {
+    const contract = makeContract({
+      listingCount: vi.fn().mockResolvedValue(1n),
+      listings: vi.fn().mockResolvedValue(rawListing({ status: 2n })),
+    })
+
+    const [listing] = await fetchAllListings(contract)
+
+    expect(listing.status).toBe(2)
+  })
+
+  it('wraps a failure reading listingCount', async () => {
+    const contract = makeContract({
+      listingCount: vi.fn().mockRejectedValue(new Error('rpc error')),
+    })
+
+    await expect(fetchAllListings(contract)).rejects.toThrow(ListingContractError)
+  })
+
+  it('wraps a failure reading an individual listing', async () => {
+    const contract = makeContract({
+      listingCount: vi.fn().mockResolvedValue(1n),
+      listings: vi.fn().mockRejectedValue(new Error('rpc error')),
+    })
+
+    await expect(fetchAllListings(contract)).rejects.toThrow(ListingContractError)
   })
 })
