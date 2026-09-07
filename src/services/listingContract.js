@@ -23,14 +23,34 @@ export async function fetchAllListings(contract) {
 
   const ids = Array.from({ length: Number(count) }, (_, i) => i)
   try {
-    return await Promise.all(ids.map((id) => fetchListing(contract, id)))
+    return await Promise.all(ids.map(async (id) => normalizeListing(id, await contract.listings(id))))
   } catch (err) {
     throw new ListingContractError(describeContractError(err))
   }
 }
 
-async function fetchListing(contract, id) {
-  const raw = await contract.listings(id)
+/**
+ * Reads a single listing's current on-chain state. Used to refresh one
+ * card after a state-changing action (e.g. reportFound) instead of
+ * re-fetching the whole list.
+ * @param {import('ethers').Contract} contract
+ * @param {number} id
+ * @returns {Promise<object>}
+ */
+export async function fetchListing(contract, id) {
+  if (!contract) {
+    throw new ListingContractError('No contract instance available. Connect your wallet first.')
+  }
+
+  try {
+    const raw = await contract.listings(id)
+    return normalizeListing(id, raw)
+  } catch (err) {
+    throw new ListingContractError(describeContractError(err))
+  }
+}
+
+function normalizeListing(id, raw) {
   return {
     id,
     owner: raw.owner,
@@ -70,16 +90,49 @@ export async function sendCreateListingTx(contract, { cid, rewardWei, expiration
  * @returns {Promise<{ listingId: bigint|null, transactionHash: string }>}
  */
 export async function waitForListingReceipt(contract, tx) {
-  let receipt
-  try {
-    receipt = await tx.wait()
-  } catch (err) {
-    throw new ListingContractError(describeContractError(err))
-  }
+  const receipt = await waitForTx(tx)
 
   return {
     listingId: extractListingId(contract, receipt),
     transactionHash: receipt.hash,
+  }
+}
+
+/**
+ * Sends the reportFound transaction (triggers the wallet signature prompt)
+ * for a given listing and returns the pending transaction, without waiting
+ * for it to be mined.
+ * @param {import('ethers').Contract} contract - signer-backed contract instance
+ * @param {number} listingId
+ */
+export async function sendReportFoundTx(contract, listingId) {
+  if (!contract) {
+    throw new ListingContractError('No contract instance available. Connect your wallet first.')
+  }
+
+  try {
+    return await contract.reportFound(listingId)
+  } catch (err) {
+    throw new ListingContractError(describeContractError(err))
+  }
+}
+
+/**
+ * Waits for a reportFound transaction to be mined. Unlike
+ * waitForListingReceipt, no data needs to be extracted from the receipt --
+ * callers should re-fetch the listing (see fetchListing) to pick up its
+ * new status.
+ * @param {import('ethers').TransactionResponse} tx
+ */
+export async function waitForReportFoundReceipt(tx) {
+  await waitForTx(tx)
+}
+
+async function waitForTx(tx) {
+  try {
+    return await tx.wait()
+  } catch (err) {
+    throw new ListingContractError(describeContractError(err))
   }
 }
 

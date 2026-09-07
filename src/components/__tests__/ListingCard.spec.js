@@ -1,13 +1,31 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
 
 vi.mock('@/services/ipfsMetadata', () => ({
   fetchListingMetadata: vi.fn(),
   IpfsMetadataError: class IpfsMetadataError extends Error {},
 }))
 
+vi.mock('@/services/listingContract', async (importOriginal) => {
+  const actual = await importOriginal()
+  return {
+    ...actual,
+    sendReportFoundTx: vi.fn(),
+    waitForReportFoundReceipt: vi.fn(),
+    fetchListing: vi.fn(),
+  }
+})
+
 import ListingCard from '../ListingCard.vue'
+import { useWalletStore } from '@/stores/wallet'
 import { fetchListingMetadata, IpfsMetadataError } from '@/services/ipfsMetadata'
+import {
+  sendReportFoundTx,
+  waitForReportFoundReceipt,
+  fetchListing,
+  ListingContractError,
+} from '@/services/listingContract'
 
 function baseListing(overrides = {}) {
   return {
@@ -23,9 +41,24 @@ function baseListing(overrides = {}) {
   }
 }
 
+function connectWallet(overrides = {}) {
+  const store = useWalletStore()
+  store.address = overrides.address ?? '0xFinder000000000000000000000000000000002'
+  store.chainId = overrides.chainId ?? 11155111n
+  store.contract = overrides.contract ?? { reportFound: vi.fn() }
+  return store
+}
+
 describe('ListingCard', () => {
   beforeEach(() => {
+    setActivePinia(createPinia())
     vi.clearAllMocks()
+    fetchListingMetadata.mockResolvedValue({
+      title: '',
+      description: 'A lost thing',
+      location: 'Somewhere',
+      image: null,
+    })
   })
 
   it('shows a loading state before metadata resolves', () => {
@@ -105,5 +138,96 @@ describe('ListingCard', () => {
 
     expect(wrapper.classes()).toContain('status-cancelled')
     expect(wrapper.text()).toContain('Cancelled')
+  })
+})
+
+// Chained awaits (send tx -> wait for receipt -> re-fetch listing) resolve
+// across more than one microtask flush in jsdom, same reasoning as
+// CreateListingView's submitAndSettle helper.
+async function clickReportAndSettle(wrapper) {
+  await wrapper.find('button.report-found-button').trigger('click')
+  for (let i = 0; i < 5; i++) {
+    await flushPromises()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+  }
+}
+
+describe('ListingCard - Report Found', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    fetchListingMetadata.mockResolvedValue({ description: '', location: '', image: null })
+  })
+
+  it('does not show a Report Found button when the wallet is not connected', async () => {
+    const wrapper = mount(ListingCard, { props: { listing: baseListing() } })
+    await flushPromises()
+
+    expect(wrapper.find('button.report-found-button').exists()).toBe(false)
+  })
+
+  it('does not show a Report Found button for the listing owner', async () => {
+    connectWallet({ address: '0xOwner0000000000000000000000000000000001' })
+
+    const wrapper = mount(ListingCard, { props: { listing: baseListing() } })
+    await flushPromises()
+
+    expect(wrapper.find('button.report-found-button').exists()).toBe(false)
+  })
+
+  it('does not show a Report Found button for a non-Open listing', async () => {
+    connectWallet()
+
+    const wrapper = mount(ListingCard, { props: { listing: baseListing({ status: 1 }) } })
+    await flushPromises()
+
+    expect(wrapper.find('button.report-found-button').exists()).toBe(false)
+  })
+
+  it('shows a Report Found button for a non-owner on an Open listing', async () => {
+    connectWallet()
+
+    const wrapper = mount(ListingCard, { props: { listing: baseListing() } })
+    await flushPromises()
+
+    expect(wrapper.find('button.report-found-button').exists()).toBe(true)
+  })
+
+  it('walks through signature/confirmation states and updates the card after a successful report', async () => {
+    const store = connectWallet()
+    const tx = {}
+    sendReportFoundTx.mockResolvedValue(tx)
+    waitForReportFoundReceipt.mockResolvedValue(undefined)
+    fetchListing.mockResolvedValue(
+      baseListing({ status: 1, finder: store.address }),
+    )
+
+    const wrapper = mount(ListingCard, { props: { listing: baseListing() } })
+    await flushPromises()
+
+    await clickReportAndSettle(wrapper)
+
+    expect(sendReportFoundTx).toHaveBeenCalledWith(store.contract, 0)
+    expect(waitForReportFoundReceipt).toHaveBeenCalledWith(tx)
+    expect(fetchListing).toHaveBeenCalledWith(store.contract, 0)
+    expect(wrapper.text()).toContain('You reported this item as found.')
+    expect(wrapper.text()).toContain('Reported')
+    expect(wrapper.find('button.report-found-button').exists()).toBe(false)
+  })
+
+  it('shows an error and keeps the button usable when the wallet rejects the report transaction', async () => {
+    connectWallet()
+    sendReportFoundTx.mockRejectedValue(
+      new ListingContractError('Transaction was rejected in your wallet.'),
+    )
+
+    const wrapper = mount(ListingCard, { props: { listing: baseListing() } })
+    await flushPromises()
+
+    await clickReportAndSettle(wrapper)
+
+    expect(wrapper.text()).toContain('Transaction was rejected in your wallet.')
+    expect(waitForReportFoundReceipt).not.toHaveBeenCalled()
+    expect(wrapper.find('button.report-found-button').attributes('disabled')).toBeUndefined()
   })
 })

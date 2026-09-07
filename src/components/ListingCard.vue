@@ -1,16 +1,36 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { formatEther } from 'ethers'
-import { STATUS_LABELS } from '@/services/listingContract'
+import { useWalletStore } from '@/stores/wallet'
+import {
+  STATUS_LABELS,
+  sendReportFoundTx,
+  waitForReportFoundReceipt,
+  fetchListing,
+  ListingContractError,
+} from '@/services/listingContract'
 import { fetchListingMetadata, IpfsMetadataError } from '@/services/ipfsMetadata'
 
 const props = defineProps({
   listing: { type: Object, required: true },
 })
 
-const statusLabel = computed(() => STATUS_LABELS[props.listing.status] ?? 'Unknown')
+const wallet = useWalletStore()
+
+// Local, updatable copy of the listing so a successful "report found" can
+// refresh this card's status/finder in place, without the parent having to
+// re-fetch the whole list.
+const currentListing = ref({ ...props.listing })
+watch(
+  () => props.listing,
+  (value) => {
+    currentListing.value = { ...value }
+  },
+)
+
+const statusLabel = computed(() => STATUS_LABELS[currentListing.value.status] ?? 'Unknown')
 const statusClass = computed(() => `status-${statusLabel.value.toLowerCase()}`)
-const rewardEth = computed(() => formatEther(props.listing.reward))
+const rewardEth = computed(() => formatEther(currentListing.value.reward))
 
 const metadata = ref(null)
 const metadataError = ref('')
@@ -26,6 +46,50 @@ onMounted(async () => {
     loadingMetadata.value = false
   }
 })
+
+// Open listings can be reported by anyone except their own owner.
+const canReportFound = computed(() => {
+  if (currentListing.value.status !== 0) return false
+  if (!wallet.address || !wallet.contract) return false
+  return wallet.address.toLowerCase() !== currentListing.value.owner.toLowerCase()
+})
+
+const reportStatus = ref('idle')
+const reportError = ref('')
+
+const isReporting = computed(() =>
+  ['awaiting-signature', 'awaiting-confirmation'].includes(reportStatus.value),
+)
+
+const reportButtonLabel = computed(() => {
+  switch (reportStatus.value) {
+    case 'awaiting-signature':
+      return 'Waiting for you to confirm in your wallet...'
+    case 'awaiting-confirmation':
+      return 'Waiting for confirmation on-chain...'
+    default:
+      return 'Report Found'
+  }
+})
+
+async function onReportFound() {
+  reportError.value = ''
+
+  try {
+    reportStatus.value = 'awaiting-signature'
+    const tx = await sendReportFoundTx(wallet.contract, currentListing.value.id)
+
+    reportStatus.value = 'awaiting-confirmation'
+    await waitForReportFoundReceipt(tx)
+
+    currentListing.value = await fetchListing(wallet.contract, currentListing.value.id)
+    reportStatus.value = 'success'
+  } catch (err) {
+    reportStatus.value = 'error'
+    reportError.value =
+      err instanceof ListingContractError ? err.message : err?.message || 'Failed to report the item as found.'
+  }
+}
 </script>
 
 <template>
@@ -47,7 +111,7 @@ onMounted(async () => {
       <p v-if="loadingMetadata" class="loading">Loading details…</p>
       <template v-else-if="metadataError">
         <p class="metadata-error">{{ metadataError }}</p>
-        <p class="item-cid">CID: {{ listing.itemCID }}</p>
+        <p class="item-cid">CID: {{ currentListing.itemCID }}</p>
       </template>
       <template v-else>
         <h3 v-if="metadata.title" class="title">{{ metadata.title }}</h3>
@@ -56,6 +120,17 @@ onMounted(async () => {
       </template>
 
       <p class="reward"><strong>Reward:</strong> {{ rewardEth }} ETH</p>
+
+      <div v-if="canReportFound" class="report-found">
+        <button type="button" class="report-found-button" :disabled="isReporting" @click="onReportFound">
+          {{ reportButtonLabel }}
+        </button>
+        <p v-if="reportError" class="report-error">{{ reportError }}</p>
+      </div>
+
+      <p v-if="reportStatus === 'success'" class="report-success">
+        You reported this item as found. Waiting for the owner to confirm.
+      </p>
     </div>
   </article>
 </template>
@@ -152,5 +227,24 @@ onMounted(async () => {
 
 .reward {
   font-weight: bold;
+}
+
+.report-found {
+  margin-top: 0.25rem;
+}
+
+.report-found-button {
+  width: 100%;
+}
+
+.report-error {
+  color: #b3261e;
+  font-size: 0.85rem;
+  margin: 0.25rem 0 0;
+}
+
+.report-success {
+  color: #1e7a34;
+  font-size: 0.85rem;
 }
 </style>
