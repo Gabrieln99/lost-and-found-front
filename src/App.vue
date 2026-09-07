@@ -20,6 +20,7 @@ onMounted(() => {
 
       <nav>
         <RouterLink to="/">Home</RouterLink>
+        <RouterLink to="/browse">Browse listings</RouterLink>
         <RouterLink to="/create-listing">Publish listing</RouterLink>
         <RouterLink to="/about">About</RouterLink>
       </nav>

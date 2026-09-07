@@ -1,4 +1,47 @@
+export const STATUS_LABELS = ['Open', 'Reported', 'Resolved', 'Cancelled']
+
 export class ListingContractError extends Error {}
+
+/**
+ * Reads every listing from the contract via listingCount() + listings(id) --
+ * the contract has no enumerable event log, just a counter and a mapping
+ * getter, so this is a straightforward loop over [0, listingCount).
+ * @param {import('ethers').Contract} contract
+ * @returns {Promise<Array<object>>}
+ */
+export async function fetchAllListings(contract) {
+  if (!contract) {
+    throw new ListingContractError('No contract instance available. Connect your wallet first.')
+  }
+
+  let count
+  try {
+    count = await contract.listingCount()
+  } catch (err) {
+    throw new ListingContractError(describeContractError(err))
+  }
+
+  const ids = Array.from({ length: Number(count) }, (_, i) => i)
+  try {
+    return await Promise.all(ids.map((id) => fetchListing(contract, id)))
+  } catch (err) {
+    throw new ListingContractError(describeContractError(err))
+  }
+}
+
+async function fetchListing(contract, id) {
+  const raw = await contract.listings(id)
+  return {
+    id,
+    owner: raw.owner,
+    finder: raw.finder,
+    reward: raw.reward,
+    itemCID: raw.itemCID,
+    status: Number(raw.status),
+    createdAt: raw.createdAt,
+    expirationTimestamp: raw.expirationTimestamp,
+  }
+}
 
 /**
  * Sends the createListing transaction (triggers the wallet signature
