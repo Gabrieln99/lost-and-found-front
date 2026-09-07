@@ -3,10 +3,13 @@ import {
   sendCreateListingTx,
   waitForListingReceipt,
   fetchAllListings,
+  fetchListing,
+  sendReportFoundTx,
+  waitForReportFoundReceipt,
   ListingContractError,
 } from '../listingContract'
 
-function makeContract({ createListing, parseLog, listingCount, listings } = {}) {
+function makeContract({ createListing, parseLog, listingCount, listings, reportFound } = {}) {
   return {
     createListing: createListing ?? vi.fn(),
     interface: {
@@ -14,6 +17,7 @@ function makeContract({ createListing, parseLog, listingCount, listings } = {}) 
     },
     listingCount: listingCount ?? vi.fn(),
     listings: listings ?? vi.fn(),
+    reportFound: reportFound ?? vi.fn(),
   }
 }
 
@@ -191,5 +195,72 @@ describe('fetchAllListings', () => {
     })
 
     await expect(fetchAllListings(contract)).rejects.toThrow(ListingContractError)
+  })
+})
+
+describe('fetchListing', () => {
+  it('throws when no contract instance is provided', async () => {
+    await expect(fetchListing(null, 0)).rejects.toThrow(ListingContractError)
+  })
+
+  it('reads and normalizes a single listing by id', async () => {
+    const listings = vi.fn().mockResolvedValue(rawListing({ status: 1n }))
+    const contract = makeContract({ listings })
+
+    const result = await fetchListing(contract, 2)
+
+    expect(listings).toHaveBeenCalledWith(2)
+    expect(result).toEqual(expect.objectContaining({ id: 2, status: 1 }))
+  })
+
+  it('wraps a failure reading the listing', async () => {
+    const contract = makeContract({ listings: vi.fn().mockRejectedValue(new Error('rpc error')) })
+
+    await expect(fetchListing(contract, 0)).rejects.toThrow(ListingContractError)
+  })
+})
+
+describe('sendReportFoundTx', () => {
+  it('throws when no contract instance is provided', async () => {
+    await expect(sendReportFoundTx(null, 0)).rejects.toThrow(ListingContractError)
+  })
+
+  it('calls contract.reportFound with the listingId', async () => {
+    const tx = {}
+    const reportFound = vi.fn().mockResolvedValue(tx)
+    const contract = makeContract({ reportFound })
+
+    const result = await sendReportFoundTx(contract, 5)
+
+    expect(result).toBe(tx)
+    expect(reportFound).toHaveBeenCalledWith(5)
+  })
+
+  it('wraps a user rejection into a clear message', async () => {
+    const reportFound = vi.fn().mockRejectedValue({ code: 'ACTION_REJECTED' })
+    const contract = makeContract({ reportFound })
+
+    await expect(sendReportFoundTx(contract, 0)).rejects.toThrow('rejected in your wallet')
+  })
+
+  it('wraps other errors using the underlying message', async () => {
+    const reportFound = vi.fn().mockRejectedValue(new Error('Owner cannot report own listing'))
+    const contract = makeContract({ reportFound })
+
+    await expect(sendReportFoundTx(contract, 0)).rejects.toThrow('Owner cannot report own listing')
+  })
+})
+
+describe('waitForReportFoundReceipt', () => {
+  it('resolves once the transaction is mined', async () => {
+    const tx = { wait: vi.fn().mockResolvedValue({ hash: '0xabc' }) }
+
+    await expect(waitForReportFoundReceipt(tx)).resolves.toBeUndefined()
+  })
+
+  it('wraps a failed/reverted transaction wait', async () => {
+    const tx = { wait: vi.fn().mockRejectedValue(new Error('reverted')) }
+
+    await expect(waitForReportFoundReceipt(tx)).rejects.toThrow(ListingContractError)
   })
 })
