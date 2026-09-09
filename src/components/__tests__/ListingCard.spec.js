@@ -279,4 +279,86 @@ describe('ListingCard - Report Found', () => {
     expect(button.attributes('disabled')).toBeUndefined()
     expect(wrapper.text()).toContain('Transaction was rejected in your wallet.')
   })
+
+  it('does not show a Cancel button before a report is started or once it is past awaiting-signature', async () => {
+    const store = connectWallet()
+    sendReportFoundTx.mockResolvedValue({})
+    waitForReportFoundReceipt.mockReturnValue(new Promise(() => {})) // never settles
+
+    const wrapper = mount(ListingCard, { props: { listing: baseListing() } })
+    await flushPromises()
+
+    expect(wrapper.find('button.report-cancel-button').exists()).toBe(false)
+
+    wrapper.find('button.report-found-button').trigger('click')
+    await flushPromises()
+
+    // Now in awaiting-confirmation (the send already resolved) -- no
+    // signature left to cancel out of.
+    expect(sendReportFoundTx).toHaveBeenCalledWith(store.contract, 0)
+    expect(wrapper.find('button.report-cancel-button').exists()).toBe(false)
+  })
+
+  it('lets the user cancel out of the awaiting-signature state immediately, without waiting for the wallet', async () => {
+    connectWallet()
+    // The wallet request hangs forever -- exactly the scenario the Cancel
+    // button exists for.
+    sendReportFoundTx.mockReturnValue(new Promise(() => {}))
+
+    const wrapper = mount(ListingCard, { props: { listing: baseListing() } })
+    await flushPromises()
+
+    wrapper.find('button.report-found-button').trigger('click')
+    await flushPromises()
+
+    const cancelButton = wrapper.find('button.report-cancel-button')
+    expect(cancelButton.exists()).toBe(true)
+
+    await cancelButton.trigger('click')
+    for (let i = 0; i < 5; i++) {
+      await flushPromises()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    }
+
+    const reportButton = wrapper.find('button.report-found-button')
+    expect(reportButton.text()).toBe('Report Found')
+    expect(reportButton.attributes('disabled')).toBeUndefined()
+    expect(wrapper.find('button.report-cancel-button').exists()).toBe(false)
+    // Cancelling isn't an error -- no error message should appear.
+    expect(wrapper.find('.report-error').exists()).toBe(false)
+  })
+
+  it('does not surface an error if the abandoned request eventually rejects after being cancelled', async () => {
+    connectWallet()
+    let rejectSignatureRequest
+    sendReportFoundTx.mockReturnValue(
+      new Promise((_resolve, reject) => {
+        rejectSignatureRequest = reject
+      }),
+    )
+
+    const wrapper = mount(ListingCard, { props: { listing: baseListing() } })
+    await flushPromises()
+
+    wrapper.find('button.report-found-button').trigger('click')
+    await flushPromises()
+
+    await wrapper.find('button.report-cancel-button').trigger('click')
+    for (let i = 0; i < 5; i++) {
+      await flushPromises()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    }
+
+    // The abandoned request finally settles (e.g. the wallet's timeout
+    // fires) well after the user already cancelled -- this must not
+    // resurrect an error state.
+    rejectSignatureRequest(new ListingContractError('No response from your wallet.'))
+    for (let i = 0; i < 5; i++) {
+      await flushPromises()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    }
+
+    expect(wrapper.find('.report-error').exists()).toBe(false)
+    expect(wrapper.find('button.report-found-button').text()).toBe('Report Found')
+  })
 })

@@ -10,6 +10,7 @@ import {
   ListingContractError,
 } from '@/services/listingContract'
 import { fetchListingMetadata, IpfsMetadataError } from '@/services/ipfsMetadata'
+import { createCancelGate, ignoreLateSettlement, CancelledError } from '@/utils/cancelGate'
 
 const props = defineProps({
   listing: { type: Object, required: true },
@@ -72,12 +73,22 @@ const reportButtonLabel = computed(() => {
   }
 })
 
+// Lets a manual Cancel click (during awaiting-signature only) abandon the
+// in-flight wallet request immediately, instead of making the user wait
+// out the full wallet-response timeout. The request itself isn't actually
+// abortable, so it may still be hanging in the background -- see
+// ignoreLateSettlement.
+let cancelGate = null
+
 async function onReportFound() {
   reportError.value = ''
+  cancelGate = createCancelGate()
 
   try {
     reportStatus.value = 'awaiting-signature'
-    const tx = await sendReportFoundTx(wallet.contract, currentListing.value.id)
+    const sendPromise = sendReportFoundTx(wallet.contract, currentListing.value.id)
+    ignoreLateSettlement(sendPromise)
+    const tx = await Promise.race([sendPromise, cancelGate.promise])
 
     reportStatus.value = 'awaiting-confirmation'
     await waitForReportFoundReceipt(tx)
@@ -85,10 +96,20 @@ async function onReportFound() {
     currentListing.value = await fetchListing(wallet.contract, currentListing.value.id)
     reportStatus.value = 'success'
   } catch (err) {
+    if (err instanceof CancelledError) {
+      reportStatus.value = 'idle'
+      return
+    }
     reportStatus.value = 'error'
     reportError.value =
       err instanceof ListingContractError ? err.message : err?.message || 'Failed to report the item as found.'
+  } finally {
+    cancelGate = null
   }
+}
+
+function cancelReportFound() {
+  cancelGate?.cancel()
 }
 </script>
 
@@ -124,6 +145,14 @@ async function onReportFound() {
       <div v-if="canReportFound" class="report-found">
         <button type="button" class="report-found-button" :disabled="isReporting" @click="onReportFound">
           {{ reportButtonLabel }}
+        </button>
+        <button
+          v-if="reportStatus === 'awaiting-signature'"
+          type="button"
+          class="report-cancel-button"
+          @click="cancelReportFound"
+        >
+          Cancel
         </button>
         <p v-if="reportError" class="report-error">{{ reportError }}</p>
       </div>
@@ -235,6 +264,14 @@ async function onReportFound() {
 
 .report-found-button {
   width: 100%;
+}
+
+.report-cancel-button {
+  width: 100%;
+  margin-top: 0.35rem;
+  background: transparent;
+  border: 1px solid var(--color-border);
+  color: inherit;
 }
 
 .report-error {
