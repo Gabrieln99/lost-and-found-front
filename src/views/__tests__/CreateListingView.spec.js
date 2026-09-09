@@ -209,4 +209,61 @@ describe('CreateListingView', () => {
     expect(button.attributes('disabled')).toBeUndefined()
     expect(wrapper.text()).toContain('Transaction was rejected in your wallet.')
   })
+
+  it('does not show a Cancel button before submitting or once past awaiting-signature', async () => {
+    connectWallet()
+    uploadListingMetadata.mockResolvedValue('bafymetadatacid')
+    sendCreateListingTx.mockResolvedValue({})
+    waitForListingReceipt.mockReturnValue(new Promise(() => {})) // never settles
+
+    const wrapper = mount(CreateListingView)
+    await fillValidForm(wrapper)
+
+    expect(wrapper.find('button.cancel-button').exists()).toBe(false)
+
+    wrapper.find('form').trigger('submit')
+    for (let i = 0; i < 5; i++) {
+      await flushPromises()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      if (sendCreateListingTx.mock.calls.length > 0) break
+    }
+
+    // Now in awaiting-confirmation (the send already resolved) -- no
+    // signature left to cancel out of.
+    expect(wrapper.find('button.cancel-button').exists()).toBe(false)
+  })
+
+  it('lets the user cancel out of the awaiting-signature state immediately, without waiting for the wallet', async () => {
+    connectWallet()
+    uploadListingMetadata.mockResolvedValue('bafymetadatacid')
+    // The wallet request hangs forever -- exactly the scenario the Cancel
+    // button exists for.
+    sendCreateListingTx.mockReturnValue(new Promise(() => {}))
+
+    const wrapper = mount(CreateListingView)
+    await fillValidForm(wrapper)
+
+    wrapper.find('form').trigger('submit')
+    for (let i = 0; i < 5; i++) {
+      await flushPromises()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      if (sendCreateListingTx.mock.calls.length > 0) break
+    }
+
+    const cancelButton = wrapper.find('button.cancel-button')
+    expect(cancelButton.exists()).toBe(true)
+
+    await cancelButton.trigger('click')
+    for (let i = 0; i < 5; i++) {
+      await flushPromises()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    }
+
+    const submitButton = wrapper.find('button[type="submit"]')
+    expect(submitButton.text()).toBe('Publish listing')
+    expect(submitButton.attributes('disabled')).toBeUndefined()
+    expect(wrapper.find('button.cancel-button').exists()).toBe(false)
+    // Cancelling isn't an error -- no error message should appear.
+    expect(wrapper.find('.submit-error').exists()).toBe(false)
+  })
 })

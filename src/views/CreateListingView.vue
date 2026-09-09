@@ -9,6 +9,7 @@ import {
   waitForListingReceipt,
   ListingContractError,
 } from '@/services/listingContract'
+import { createCancelGate, ignoreLateSettlement, CancelledError } from '@/utils/cancelGate'
 
 // Matches the storage service's own 10 MB cap so oversized files are
 // rejected client-side before an upload is even attempted.
@@ -107,6 +108,13 @@ const statusMessage = computed(() => {
   }
 })
 
+// Lets a manual Cancel click (during awaiting-signature only) abandon the
+// in-flight wallet request immediately, instead of making the user wait
+// out the full wallet-response timeout. The request itself isn't actually
+// abortable, so it may still be hanging in the background -- see
+// ignoreLateSettlement.
+let cancelGate = null
+
 const onSubmit = handleSubmit(async (values) => {
   submitError.value = ''
   result.value = null
@@ -119,6 +127,8 @@ const onSubmit = handleSubmit(async (values) => {
     submitError.value = walletBlockReason.value
     return
   }
+
+  cancelGate = createCancelGate()
 
   try {
     status.value = 'uploading-image'
@@ -135,11 +145,13 @@ const onSubmit = handleSubmit(async (values) => {
       : 0n
 
     status.value = 'awaiting-signature'
-    const tx = await sendCreateListingTx(wallet.contract, {
+    const sendPromise = sendCreateListingTx(wallet.contract, {
       cid,
       rewardWei,
       expirationTimestamp,
     })
+    ignoreLateSettlement(sendPromise)
+    const tx = await Promise.race([sendPromise, cancelGate.promise])
 
     status.value = 'awaiting-confirmation'
     const { listingId, transactionHash } = await waitForListingReceipt(wallet.contract, tx)
@@ -149,14 +161,24 @@ const onSubmit = handleSubmit(async (values) => {
     resetForm()
     imageFile.value = null
   } catch (err) {
+    if (err instanceof CancelledError) {
+      status.value = 'idle'
+      return
+    }
     status.value = 'error'
     if (err instanceof StorageServiceError || err instanceof ListingContractError) {
       submitError.value = err.message
     } else {
       submitError.value = err?.message || 'Something went wrong.'
     }
+  } finally {
+    cancelGate = null
   }
 })
+
+function cancelSubmit() {
+  cancelGate?.cancel()
+}
 </script>
 
 <template>
@@ -208,6 +230,15 @@ const onSubmit = handleSubmit(async (values) => {
         {{ isSubmitting ? statusMessage : 'Publish listing' }}
       </button>
 
+      <button
+        v-if="status === 'awaiting-signature'"
+        type="button"
+        class="cancel-button"
+        @click="cancelSubmit"
+      >
+        Cancel
+      </button>
+
       <p v-if="submitError" class="submit-error">{{ submitError }}</p>
 
       <div v-if="status === 'success' && result" class="submit-success">
@@ -247,6 +278,14 @@ const onSubmit = handleSubmit(async (values) => {
 .wallet-hint {
   color: #a15c00;
   font-size: 0.9rem;
+}
+
+.cancel-button {
+  margin-top: 0.5rem;
+  width: 100%;
+  background: transparent;
+  border: 1px solid var(--color-border);
+  color: inherit;
 }
 
 .submit-error {
