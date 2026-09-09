@@ -5,12 +5,24 @@ import {
   fetchAllListings,
   fetchListing,
   sendReportFoundTx,
-  waitForReportFoundReceipt,
+  sendConfirmRecoveryTx,
+  sendCancelListingTx,
+  sendRejectReportTx,
+  waitForActionReceipt,
   ListingContractError,
   WALLET_RESPONSE_TIMEOUT_MS,
 } from '../listingContract'
 
-function makeContract({ createListing, parseLog, listingCount, listings, reportFound } = {}) {
+function makeContract({
+  createListing,
+  parseLog,
+  listingCount,
+  listings,
+  reportFound,
+  confirmRecovery,
+  cancelListing,
+  rejectReport,
+} = {}) {
   return {
     createListing: createListing ?? vi.fn(),
     interface: {
@@ -19,6 +31,9 @@ function makeContract({ createListing, parseLog, listingCount, listings, reportF
     listingCount: listingCount ?? vi.fn(),
     listings: listings ?? vi.fn(),
     reportFound: reportFound ?? vi.fn(),
+    confirmRecovery: confirmRecovery ?? vi.fn(),
+    cancelListing: cancelListing ?? vi.fn(),
+    rejectReport: rejectReport ?? vi.fn(),
   }
 }
 
@@ -274,12 +289,90 @@ describe('sendReportFoundTx', () => {
   })
 })
 
+describe('sendConfirmRecoveryTx', () => {
+  it('throws when no contract instance is provided', async () => {
+    await expect(sendConfirmRecoveryTx(null, 0)).rejects.toThrow(ListingContractError)
+  })
+
+  it('calls contract.confirmRecovery with the listingId', async () => {
+    const tx = {}
+    const confirmRecovery = vi.fn().mockResolvedValue(tx)
+    const contract = makeContract({ confirmRecovery })
+
+    const result = await sendConfirmRecoveryTx(contract, 5)
+
+    expect(result).toBe(tx)
+    expect(confirmRecovery).toHaveBeenCalledWith(5)
+  })
+
+  it('wraps a rejection using the underlying message', async () => {
+    const confirmRecovery = vi.fn().mockRejectedValue(new Error('Not listing owner'))
+    const contract = makeContract({ confirmRecovery })
+
+    await expect(sendConfirmRecoveryTx(contract, 0)).rejects.toThrow('Not listing owner')
+  })
+})
+
+describe('sendCancelListingTx', () => {
+  it('throws when no contract instance is provided', async () => {
+    await expect(sendCancelListingTx(null, 0)).rejects.toThrow(ListingContractError)
+  })
+
+  it('calls contract.cancelListing with the listingId', async () => {
+    const tx = {}
+    const cancelListing = vi.fn().mockResolvedValue(tx)
+    const contract = makeContract({ cancelListing })
+
+    const result = await sendCancelListingTx(contract, 5)
+
+    expect(result).toBe(tx)
+    expect(cancelListing).toHaveBeenCalledWith(5)
+  })
+
+  it('wraps a rejection using the underlying message', async () => {
+    const cancelListing = vi.fn().mockRejectedValue(new Error('Invalid listing status'))
+    const contract = makeContract({ cancelListing })
+
+    await expect(sendCancelListingTx(contract, 0)).rejects.toThrow('Invalid listing status')
+  })
+})
+
+describe('sendRejectReportTx', () => {
+  it('throws when no contract instance is provided', async () => {
+    await expect(sendRejectReportTx(null, 0)).rejects.toThrow(ListingContractError)
+  })
+
+  it('calls contract.rejectReport with the listingId', async () => {
+    const tx = {}
+    const rejectReport = vi.fn().mockResolvedValue(tx)
+    const contract = makeContract({ rejectReport })
+
+    const result = await sendRejectReportTx(contract, 5)
+
+    expect(result).toBe(tx)
+    expect(rejectReport).toHaveBeenCalledWith(5)
+  })
+
+  it('wraps a rejection using the underlying message', async () => {
+    const rejectReport = vi.fn().mockRejectedValue(new Error('Not listing owner'))
+    const contract = makeContract({ rejectReport })
+
+    await expect(sendRejectReportTx(contract, 0)).rejects.toThrow('Not listing owner')
+  })
+})
+
 // Regression coverage for a real bug: if the wallet's confirmation popup is
 // dismissed in a way that doesn't emit an EIP-1193 rejection (e.g. closed
 // via the popup window's own close control rather than an explicit
 // Approve/Reject), the underlying request promise never settles. Without a
 // timeout, awaiting it hangs forever and the UI stays stuck showing
 // "waiting for you to confirm in your wallet" indefinitely.
+//
+// sendConfirmRecoveryTx/sendCancelListingTx/sendRejectReportTx all route
+// through the same private sendListingActionTx -> withWalletResponseTimeout
+// helper exercised here via sendReportFoundTx, so this coverage applies to
+// all four listing-action senders without needing to duplicate it per
+// function.
 describe('wallet response timeout', () => {
   beforeEach(() => {
     vi.useFakeTimers()
@@ -322,16 +415,16 @@ describe('wallet response timeout', () => {
   })
 })
 
-describe('waitForReportFoundReceipt', () => {
+describe('waitForActionReceipt', () => {
   it('resolves once the transaction is mined', async () => {
     const tx = { wait: vi.fn().mockResolvedValue({ hash: '0xabc' }) }
 
-    await expect(waitForReportFoundReceipt(tx)).resolves.toBeUndefined()
+    await expect(waitForActionReceipt(tx)).resolves.toBeUndefined()
   })
 
   it('wraps a failed/reverted transaction wait', async () => {
     const tx = { wait: vi.fn().mockRejectedValue(new Error('reverted')) }
 
-    await expect(waitForReportFoundReceipt(tx)).rejects.toThrow(ListingContractError)
+    await expect(waitForActionReceipt(tx)).rejects.toThrow(ListingContractError)
   })
 })

@@ -132,33 +132,64 @@ export async function waitForListingReceipt(contract, tx) {
 }
 
 /**
- * Sends the reportFound transaction (triggers the wallet signature prompt)
- * for a given listing and returns the pending transaction, without waiting
- * for it to be mined.
+ * Sends a listing-action transaction (reportFound, confirmRecovery,
+ * cancelListing, rejectReport -- anything that just takes a listingId and
+ * triggers a wallet signature prompt) and returns the pending transaction,
+ * without waiting for it to be mined.
  * @param {import('ethers').Contract} contract - signer-backed contract instance
+ * @param {string} method - the contract method name to call
  * @param {number} listingId
  */
-export async function sendReportFoundTx(contract, listingId) {
+async function sendListingActionTx(contract, method, listingId) {
   if (!contract) {
     throw new ListingContractError('No contract instance available. Connect your wallet first.')
   }
 
   try {
-    return await withWalletResponseTimeout(contract.reportFound(listingId))
+    return await withWalletResponseTimeout(contract[method](listingId))
   } catch (err) {
     if (err instanceof ListingContractError) throw err
     throw new ListingContractError(describeContractError(err))
   }
 }
 
+/** Reports a listing as found. Rejects if listingId's status isn't Open. */
+export async function sendReportFoundTx(contract, listingId) {
+  return sendListingActionTx(contract, 'reportFound', listingId)
+}
+
 /**
- * Waits for a reportFound transaction to be mined. Unlike
- * waitForListingReceipt, no data needs to be extracted from the receipt --
- * callers should re-fetch the listing (see fetchListing) to pick up its
- * new status.
+ * Owner-only: confirms recovery, releasing the escrowed reward to the
+ * finder. Rejects if listingId's status isn't Reported.
+ */
+export async function sendConfirmRecoveryTx(contract, listingId) {
+  return sendListingActionTx(contract, 'confirmRecovery', listingId)
+}
+
+/**
+ * Owner-only: cancels an unclaimed listing, refunding the escrowed reward
+ * to the owner. Rejects if listingId's status isn't Open.
+ */
+export async function sendCancelListingTx(contract, listingId) {
+  return sendListingActionTx(contract, 'cancelListing', listingId)
+}
+
+/**
+ * Owner-only: rejects a false/malicious found report, returning the
+ * listing to Open. Rejects if listingId's status isn't Reported.
+ */
+export async function sendRejectReportTx(contract, listingId) {
+  return sendListingActionTx(contract, 'rejectReport', listingId)
+}
+
+/**
+ * Waits for a listing-action transaction (reportFound, confirmRecovery,
+ * cancelListing, rejectReport) to be mined. Unlike waitForListingReceipt,
+ * no data needs to be extracted from the receipt -- callers should
+ * re-fetch the listing (see fetchListing) to pick up its new status.
  * @param {import('ethers').TransactionResponse} tx
  */
-export async function waitForReportFoundReceipt(tx) {
+export async function waitForActionReceipt(tx) {
   await waitForTx(tx)
 }
 
