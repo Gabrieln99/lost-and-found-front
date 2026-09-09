@@ -12,7 +12,10 @@ vi.mock('@/services/listingContract', async (importOriginal) => {
   return {
     ...actual,
     sendReportFoundTx: vi.fn(),
-    waitForReportFoundReceipt: vi.fn(),
+    sendConfirmRecoveryTx: vi.fn(),
+    sendCancelListingTx: vi.fn(),
+    sendRejectReportTx: vi.fn(),
+    waitForActionReceipt: vi.fn(),
     fetchListing: vi.fn(),
   }
 })
@@ -22,15 +25,21 @@ import { useWalletStore } from '@/stores/wallet'
 import { fetchListingMetadata, IpfsMetadataError } from '@/services/ipfsMetadata'
 import {
   sendReportFoundTx,
-  waitForReportFoundReceipt,
+  sendConfirmRecoveryTx,
+  sendCancelListingTx,
+  sendRejectReportTx,
+  waitForActionReceipt,
   fetchListing,
   ListingContractError,
 } from '@/services/listingContract'
 
+const OWNER_ADDRESS = '0xOwner0000000000000000000000000000000001'
+const OTHER_ADDRESS = '0xFinder000000000000000000000000000000002'
+
 function baseListing(overrides = {}) {
   return {
     id: 0,
-    owner: '0xOwner0000000000000000000000000000000001',
+    owner: OWNER_ADDRESS,
     finder: '0x0000000000000000000000000000000000000000',
     reward: 10000000000000000n, // 0.01 ETH
     itemCID: 'bafymetadatacid',
@@ -43,9 +52,14 @@ function baseListing(overrides = {}) {
 
 function connectWallet(overrides = {}) {
   const store = useWalletStore()
-  store.address = overrides.address ?? '0xFinder000000000000000000000000000000002'
+  store.address = overrides.address ?? OTHER_ADDRESS
   store.chainId = overrides.chainId ?? 11155111n
-  store.contract = overrides.contract ?? { reportFound: vi.fn() }
+  store.contract = overrides.contract ?? {
+    reportFound: vi.fn(),
+    confirmRecovery: vi.fn(),
+    cancelListing: vi.fn(),
+    rejectReport: vi.fn(),
+  }
   return store
 }
 
@@ -167,7 +181,7 @@ describe('ListingCard - Report Found', () => {
   })
 
   it('does not show a Report Found button for the listing owner', async () => {
-    connectWallet({ address: '0xOwner0000000000000000000000000000000001' })
+    connectWallet({ address: OWNER_ADDRESS })
 
     const wrapper = mount(ListingCard, { props: { listing: baseListing() } })
     await flushPromises()
@@ -197,7 +211,7 @@ describe('ListingCard - Report Found', () => {
     const store = connectWallet()
     const tx = {}
     sendReportFoundTx.mockResolvedValue(tx)
-    waitForReportFoundReceipt.mockResolvedValue(undefined)
+    waitForActionReceipt.mockResolvedValue(undefined)
     fetchListing.mockResolvedValue(
       baseListing({ status: 1, finder: store.address }),
     )
@@ -208,7 +222,7 @@ describe('ListingCard - Report Found', () => {
     await clickReportAndSettle(wrapper)
 
     expect(sendReportFoundTx).toHaveBeenCalledWith(store.contract, 0)
-    expect(waitForReportFoundReceipt).toHaveBeenCalledWith(tx)
+    expect(waitForActionReceipt).toHaveBeenCalledWith(tx)
     expect(fetchListing).toHaveBeenCalledWith(store.contract, 0)
     expect(wrapper.text()).toContain('You reported this item as found.')
     expect(wrapper.text()).toContain('Reported')
@@ -227,7 +241,7 @@ describe('ListingCard - Report Found', () => {
     await clickReportAndSettle(wrapper)
 
     expect(wrapper.text()).toContain('Transaction was rejected in your wallet.')
-    expect(waitForReportFoundReceipt).not.toHaveBeenCalled()
+    expect(waitForActionReceipt).not.toHaveBeenCalled()
     expect(wrapper.find('button.report-found-button').attributes('disabled')).toBeUndefined()
   })
 
@@ -283,12 +297,12 @@ describe('ListingCard - Report Found', () => {
   it('does not show a Cancel button before a report is started or once it is past awaiting-signature', async () => {
     const store = connectWallet()
     sendReportFoundTx.mockResolvedValue({})
-    waitForReportFoundReceipt.mockReturnValue(new Promise(() => {})) // never settles
+    waitForActionReceipt.mockReturnValue(new Promise(() => {})) // never settles
 
     const wrapper = mount(ListingCard, { props: { listing: baseListing() } })
     await flushPromises()
 
-    expect(wrapper.find('button.report-cancel-button').exists()).toBe(false)
+    expect(wrapper.find('button.action-cancel-button').exists()).toBe(false)
 
     wrapper.find('button.report-found-button').trigger('click')
     await flushPromises()
@@ -296,7 +310,7 @@ describe('ListingCard - Report Found', () => {
     // Now in awaiting-confirmation (the send already resolved) -- no
     // signature left to cancel out of.
     expect(sendReportFoundTx).toHaveBeenCalledWith(store.contract, 0)
-    expect(wrapper.find('button.report-cancel-button').exists()).toBe(false)
+    expect(wrapper.find('button.action-cancel-button').exists()).toBe(false)
   })
 
   it('lets the user cancel out of the awaiting-signature state immediately, without waiting for the wallet', async () => {
@@ -311,7 +325,7 @@ describe('ListingCard - Report Found', () => {
     wrapper.find('button.report-found-button').trigger('click')
     await flushPromises()
 
-    const cancelButton = wrapper.find('button.report-cancel-button')
+    const cancelButton = wrapper.find('button.action-cancel-button')
     expect(cancelButton.exists()).toBe(true)
 
     await cancelButton.trigger('click')
@@ -323,9 +337,9 @@ describe('ListingCard - Report Found', () => {
     const reportButton = wrapper.find('button.report-found-button')
     expect(reportButton.text()).toBe('Report Found')
     expect(reportButton.attributes('disabled')).toBeUndefined()
-    expect(wrapper.find('button.report-cancel-button').exists()).toBe(false)
+    expect(wrapper.find('button.action-cancel-button').exists()).toBe(false)
     // Cancelling isn't an error -- no error message should appear.
-    expect(wrapper.find('.report-error').exists()).toBe(false)
+    expect(wrapper.find('.action-error').exists()).toBe(false)
   })
 
   it('does not surface an error if the abandoned request eventually rejects after being cancelled', async () => {
@@ -343,7 +357,7 @@ describe('ListingCard - Report Found', () => {
     wrapper.find('button.report-found-button').trigger('click')
     await flushPromises()
 
-    await wrapper.find('button.report-cancel-button').trigger('click')
+    await wrapper.find('button.action-cancel-button').trigger('click')
     for (let i = 0; i < 5; i++) {
       await flushPromises()
       await new Promise((resolve) => setTimeout(resolve, 0))
@@ -358,7 +372,270 @@ describe('ListingCard - Report Found', () => {
       await new Promise((resolve) => setTimeout(resolve, 0))
     }
 
-    expect(wrapper.find('.report-error').exists()).toBe(false)
+    expect(wrapper.find('.action-error').exists()).toBe(false)
     expect(wrapper.find('button.report-found-button').text()).toBe('Report Found')
+  })
+})
+
+// Generic settle helper shared by the three owner-action suites below --
+// same reasoning as clickReportAndSettle: the send -> wait -> re-fetch
+// chain resolves across more than one microtask flush in jsdom.
+async function clickAndSettle(wrapper, selector) {
+  await wrapper.find(selector).trigger('click')
+  for (let i = 0; i < 5; i++) {
+    await flushPromises()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+  }
+}
+
+describe('ListingCard - Cancel Listing', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    fetchListingMetadata.mockResolvedValue({ description: '', location: '', image: null })
+  })
+
+  it('does not show a Cancel Listing button when the wallet is not connected', async () => {
+    const wrapper = mount(ListingCard, { props: { listing: baseListing() } })
+    await flushPromises()
+
+    expect(wrapper.find('button.cancel-listing-button').exists()).toBe(false)
+  })
+
+  it('does not show a Cancel Listing button for a non-owner', async () => {
+    connectWallet({ address: OTHER_ADDRESS })
+
+    const wrapper = mount(ListingCard, { props: { listing: baseListing() } })
+    await flushPromises()
+
+    expect(wrapper.find('button.cancel-listing-button').exists()).toBe(false)
+  })
+
+  it('does not show a Cancel Listing button for a non-Open listing', async () => {
+    connectWallet({ address: OWNER_ADDRESS })
+
+    const wrapper = mount(ListingCard, { props: { listing: baseListing({ status: 1 }) } })
+    await flushPromises()
+
+    expect(wrapper.find('button.cancel-listing-button').exists()).toBe(false)
+  })
+
+  it('shows a Cancel Listing button for the owner on an Open listing', async () => {
+    connectWallet({ address: OWNER_ADDRESS })
+
+    const wrapper = mount(ListingCard, { props: { listing: baseListing() } })
+    await flushPromises()
+
+    expect(wrapper.find('button.cancel-listing-button').exists()).toBe(true)
+    // The owner shouldn't also see Report Found on their own listing.
+    expect(wrapper.find('button.report-found-button').exists()).toBe(false)
+  })
+
+  it('walks through signature/confirmation states and updates the card after a successful cancellation', async () => {
+    const store = connectWallet({ address: OWNER_ADDRESS })
+    const tx = {}
+    sendCancelListingTx.mockResolvedValue(tx)
+    waitForActionReceipt.mockResolvedValue(undefined)
+    fetchListing.mockResolvedValue(baseListing({ status: 3 }))
+
+    const wrapper = mount(ListingCard, { props: { listing: baseListing() } })
+    await flushPromises()
+
+    await clickAndSettle(wrapper, 'button.cancel-listing-button')
+
+    expect(sendCancelListingTx).toHaveBeenCalledWith(store.contract, 0)
+    expect(waitForActionReceipt).toHaveBeenCalledWith(tx)
+    expect(fetchListing).toHaveBeenCalledWith(store.contract, 0)
+    expect(wrapper.text()).toContain('Listing cancelled -- your reward has been refunded.')
+    expect(wrapper.text()).toContain('Cancelled')
+    expect(wrapper.find('button.cancel-listing-button').exists()).toBe(false)
+  })
+
+  it('shows an error and keeps the button usable when the wallet rejects the cancellation', async () => {
+    connectWallet({ address: OWNER_ADDRESS })
+    sendCancelListingTx.mockRejectedValue(
+      new ListingContractError('Transaction was rejected in your wallet.'),
+    )
+
+    const wrapper = mount(ListingCard, { props: { listing: baseListing() } })
+    await flushPromises()
+
+    await clickAndSettle(wrapper, 'button.cancel-listing-button')
+
+    expect(wrapper.text()).toContain('Transaction was rejected in your wallet.')
+    expect(wrapper.find('button.cancel-listing-button').attributes('disabled')).toBeUndefined()
+  })
+
+  it('lets the user cancel out of the awaiting-signature state via the shared Cancel button', async () => {
+    connectWallet({ address: OWNER_ADDRESS })
+    sendCancelListingTx.mockReturnValue(new Promise(() => {})) // hangs forever
+
+    const wrapper = mount(ListingCard, { props: { listing: baseListing() } })
+    await flushPromises()
+
+    await wrapper.find('button.cancel-listing-button').trigger('click')
+    await flushPromises()
+
+    await clickAndSettle(wrapper, 'button.action-cancel-button')
+
+    expect(wrapper.find('button.cancel-listing-button').text()).toBe('Cancel Listing')
+    expect(wrapper.find('.action-error').exists()).toBe(false)
+  })
+})
+
+describe('ListingCard - Confirm Recovery / Reject Report', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    fetchListingMetadata.mockResolvedValue({ description: '', location: '', image: null })
+  })
+
+  it('does not show Confirm Recovery or Reject Report when the wallet is not connected', async () => {
+    const wrapper = mount(ListingCard, { props: { listing: baseListing({ status: 1 }) } })
+    await flushPromises()
+
+    expect(wrapper.find('button.confirm-recovery-button').exists()).toBe(false)
+    expect(wrapper.find('button.reject-report-button').exists()).toBe(false)
+  })
+
+  it('does not show Confirm Recovery or Reject Report for a non-owner', async () => {
+    connectWallet({ address: OTHER_ADDRESS })
+
+    const wrapper = mount(ListingCard, { props: { listing: baseListing({ status: 1 }) } })
+    await flushPromises()
+
+    expect(wrapper.find('button.confirm-recovery-button').exists()).toBe(false)
+    expect(wrapper.find('button.reject-report-button').exists()).toBe(false)
+  })
+
+  it('does not show Confirm Recovery or Reject Report for a non-Reported listing', async () => {
+    connectWallet({ address: OWNER_ADDRESS })
+
+    const wrapper = mount(ListingCard, { props: { listing: baseListing({ status: 0 }) } })
+    await flushPromises()
+
+    expect(wrapper.find('button.confirm-recovery-button').exists()).toBe(false)
+    expect(wrapper.find('button.reject-report-button').exists()).toBe(false)
+  })
+
+  it('shows both Confirm Recovery and Reject Report, visually distinct, for the owner on a Reported listing', async () => {
+    connectWallet({ address: OWNER_ADDRESS })
+
+    const wrapper = mount(ListingCard, { props: { listing: baseListing({ status: 1 }) } })
+    await flushPromises()
+
+    const confirmButton = wrapper.find('button.confirm-recovery-button')
+    const rejectButton = wrapper.find('button.reject-report-button')
+    expect(confirmButton.exists()).toBe(true)
+    expect(rejectButton.exists()).toBe(true)
+    // They must not share a CSS class -- opposite actions need distinct styling.
+    expect(confirmButton.classes()).not.toEqual(rejectButton.classes())
+  })
+
+  it('walks through signature/confirmation states and updates the card after confirming recovery, with copy that mentions the released funds', async () => {
+    const store = connectWallet({ address: OWNER_ADDRESS })
+    const tx = {}
+    sendConfirmRecoveryTx.mockResolvedValue(tx)
+    waitForActionReceipt.mockResolvedValue(undefined)
+    fetchListing.mockResolvedValue(baseListing({ status: 2 }))
+
+    const wrapper = mount(ListingCard, { props: { listing: baseListing({ status: 1 }) } })
+    await flushPromises()
+
+    await clickAndSettle(wrapper, 'button.confirm-recovery-button')
+
+    expect(sendConfirmRecoveryTx).toHaveBeenCalledWith(store.contract, 0)
+    expect(waitForActionReceipt).toHaveBeenCalledWith(tx)
+    expect(fetchListing).toHaveBeenCalledWith(store.contract, 0)
+    expect(wrapper.text()).toContain(
+      'Recovery confirmed -- the reward has been released to the finder.',
+    )
+    expect(wrapper.text()).toContain('Resolved')
+    expect(wrapper.find('button.confirm-recovery-button').exists()).toBe(false)
+    expect(wrapper.find('button.reject-report-button').exists()).toBe(false)
+  })
+
+  it('shows a confirmation-releasing-funds message while awaiting on-chain confirmation', async () => {
+    connectWallet({ address: OWNER_ADDRESS })
+    sendConfirmRecoveryTx.mockResolvedValue({})
+    waitForActionReceipt.mockReturnValue(new Promise(() => {})) // never settles
+
+    const wrapper = mount(ListingCard, { props: { listing: baseListing({ status: 1 }) } })
+    await flushPromises()
+
+    await wrapper.find('button.confirm-recovery-button').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('button.confirm-recovery-button').text()).toContain(
+      'Releasing the reward to the finder',
+    )
+  })
+
+  it('walks through signature/confirmation states and updates the card after rejecting a report', async () => {
+    const store = connectWallet({ address: OWNER_ADDRESS })
+    const tx = {}
+    sendRejectReportTx.mockResolvedValue(tx)
+    waitForActionReceipt.mockResolvedValue(undefined)
+    fetchListing.mockResolvedValue(baseListing({ status: 0 }))
+
+    const wrapper = mount(ListingCard, { props: { listing: baseListing({ status: 1 }) } })
+    await flushPromises()
+
+    await clickAndSettle(wrapper, 'button.reject-report-button')
+
+    expect(sendRejectReportTx).toHaveBeenCalledWith(store.contract, 0)
+    expect(waitForActionReceipt).toHaveBeenCalledWith(tx)
+    expect(fetchListing).toHaveBeenCalledWith(store.contract, 0)
+    expect(wrapper.text()).toContain('Report rejected -- the listing is open again.')
+    expect(wrapper.text()).toContain('Open')
+    expect(wrapper.find('button.confirm-recovery-button').exists()).toBe(false)
+    expect(wrapper.find('button.reject-report-button').exists()).toBe(false)
+  })
+
+  it('disables both Confirm Recovery and Reject Report while either action is in flight', async () => {
+    connectWallet({ address: OWNER_ADDRESS })
+    sendConfirmRecoveryTx.mockReturnValue(new Promise(() => {})) // hangs forever
+
+    const wrapper = mount(ListingCard, { props: { listing: baseListing({ status: 1 }) } })
+    await flushPromises()
+
+    await wrapper.find('button.confirm-recovery-button').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('button.confirm-recovery-button').attributes('disabled')).toBeDefined()
+    expect(wrapper.find('button.reject-report-button').attributes('disabled')).toBeDefined()
+  })
+
+  it('shows an error and keeps both buttons usable when confirming recovery is rejected', async () => {
+    connectWallet({ address: OWNER_ADDRESS })
+    sendConfirmRecoveryTx.mockRejectedValue(
+      new ListingContractError('Transaction was rejected in your wallet.'),
+    )
+
+    const wrapper = mount(ListingCard, { props: { listing: baseListing({ status: 1 }) } })
+    await flushPromises()
+
+    await clickAndSettle(wrapper, 'button.confirm-recovery-button')
+
+    expect(wrapper.text()).toContain('Transaction was rejected in your wallet.')
+    expect(wrapper.find('button.confirm-recovery-button').attributes('disabled')).toBeUndefined()
+    expect(wrapper.find('button.reject-report-button').attributes('disabled')).toBeUndefined()
+  })
+
+  it('lets the user cancel out of the awaiting-signature state via the shared Cancel button', async () => {
+    connectWallet({ address: OWNER_ADDRESS })
+    sendRejectReportTx.mockReturnValue(new Promise(() => {})) // hangs forever
+
+    const wrapper = mount(ListingCard, { props: { listing: baseListing({ status: 1 }) } })
+    await flushPromises()
+
+    await wrapper.find('button.reject-report-button').trigger('click')
+    await flushPromises()
+
+    await clickAndSettle(wrapper, 'button.action-cancel-button')
+
+    expect(wrapper.find('button.reject-report-button').text()).toBe('Reject Report')
+    expect(wrapper.find('button.confirm-recovery-button').attributes('disabled')).toBeUndefined()
+    expect(wrapper.find('.action-error').exists()).toBe(false)
   })
 })
