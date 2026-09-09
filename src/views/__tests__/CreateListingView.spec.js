@@ -158,4 +158,55 @@ describe('CreateListingView', () => {
     expect(wrapper.text()).toContain('Transaction was rejected in your wallet.')
     expect(waitForListingReceipt).not.toHaveBeenCalled()
   })
+
+  // Regression test: this view shares the exact same
+  // signature -> confirmation flow as ListingCard's Report Found button,
+  // which had a real bug where cancelling the MetaMask prompt left the
+  // button stuck showing "Waiting for you to confirm in your wallet...".
+  // The underlying fix (a wallet-response timeout) lives in
+  // listingContract.js; this confirms the form itself resets properly once
+  // sendCreateListingTx rejects for any reason, including a cancellation.
+  it('resets the submit button from "waiting for signature" back to a usable state when the user cancels the MetaMask prompt', async () => {
+    const store = connectWallet()
+    uploadListingMetadata.mockResolvedValue('bafymetadatacid')
+
+    let rejectSignatureRequest
+    sendCreateListingTx.mockReturnValue(
+      new Promise((_resolve, reject) => {
+        rejectSignatureRequest = reject
+      }),
+    )
+
+    const wrapper = mount(CreateListingView)
+    await fillValidForm(wrapper)
+
+    wrapper.find('form').trigger('submit')
+    for (let i = 0; i < 5; i++) {
+      await flushPromises()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      if (sendCreateListingTx.mock.calls.length > 0) break
+    }
+
+    // Mid-flight: the button should reflect the awaiting-signature state.
+    expect(wrapper.find('button[type="submit"]').text()).toContain(
+      'Waiting for you to confirm in your wallet',
+    )
+    expect(wrapper.find('button[type="submit"]').attributes('disabled')).toBeDefined()
+    expect(sendCreateListingTx).toHaveBeenCalledWith(
+      store.contract,
+      expect.objectContaining({ cid: 'bafymetadatacid' }),
+    )
+
+    // Simulate the user cancelling/rejecting the MetaMask prompt.
+    rejectSignatureRequest(new ListingContractError('Transaction was rejected in your wallet.'))
+    for (let i = 0; i < 5; i++) {
+      await flushPromises()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    }
+
+    const button = wrapper.find('button[type="submit"]')
+    expect(button.text()).toBe('Publish listing')
+    expect(button.attributes('disabled')).toBeUndefined()
+    expect(wrapper.text()).toContain('Transaction was rejected in your wallet.')
+  })
 })

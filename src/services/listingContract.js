@@ -2,6 +2,36 @@ export const STATUS_LABELS = ['Open', 'Reported', 'Resolved', 'Cancelled']
 
 export class ListingContractError extends Error {}
 
+// Some wallets don't reliably emit an EIP-1193 rejection when their
+// confirmation popup is dismissed without an explicit Approve/Reject click
+// (e.g. closed via the popup window's own close control). Without a cap,
+// awaiting that request hangs forever, and the UI awaiting it (a "waiting
+// for you to confirm in your wallet" button state) gets stuck indefinitely
+// instead of resetting. This only guards the signature-request step --
+// waiting for on-chain confirmation afterwards can legitimately take
+// minutes and is intentionally not subject to this timeout.
+export const WALLET_RESPONSE_TIMEOUT_MS = 120_000
+
+function withWalletResponseTimeout(promise) {
+  let timer
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      reject(
+        new ListingContractError(
+          'No response from your wallet. The request may have been dismissed -- please try again.',
+        ),
+      )
+    }, WALLET_RESPONSE_TIMEOUT_MS)
+  })
+
+  // If the timeout wins the race, the original request is abandoned but
+  // may still settle later -- swallow a late rejection so it doesn't
+  // surface as an unhandled promise rejection.
+  promise.catch(() => {})
+
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
+}
+
 /**
  * Reads every listing from the contract via listingCount() + listings(id) --
  * the contract has no enumerable event log, just a counter and a mapping
@@ -76,8 +106,11 @@ export async function sendCreateListingTx(contract, { cid, rewardWei, expiration
   }
 
   try {
-    return await contract.createListing(cid, expirationTimestamp, { value: rewardWei })
+    return await withWalletResponseTimeout(
+      contract.createListing(cid, expirationTimestamp, { value: rewardWei }),
+    )
   } catch (err) {
+    if (err instanceof ListingContractError) throw err
     throw new ListingContractError(describeContractError(err))
   }
 }
@@ -111,8 +144,9 @@ export async function sendReportFoundTx(contract, listingId) {
   }
 
   try {
-    return await contract.reportFound(listingId)
+    return await withWalletResponseTimeout(contract.reportFound(listingId))
   } catch (err) {
+    if (err instanceof ListingContractError) throw err
     throw new ListingContractError(describeContractError(err))
   }
 }
