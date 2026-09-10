@@ -154,12 +154,17 @@ describe('BrowseListingsView - status filter', () => {
     fetchListingMetadata.mockImplementation((cid) => Promise.resolve(metadataFor(cid)))
   })
 
-  it('shows every listing when the status filter is "all" (the default)', async () => {
+  it('defaults to showing only Open listings, and "all" reveals every status', async () => {
     connectWallet()
     fetchAllListings.mockResolvedValue(statusFixtureListings())
 
     const wrapper = mount(BrowseListingsView)
     await flushPromises()
+
+    // Fixture statuses are 0/1/2/3; the default filter is Open (0).
+    expect(cardIds(wrapper)).toEqual([0])
+
+    await wrapper.find('select.status-filter').setValue('all')
 
     expect(cardIds(wrapper)).toEqual([3, 2, 1, 0])
   })
@@ -205,6 +210,8 @@ describe('BrowseListingsView - text search', () => {
     const wrapper = mount(BrowseListingsView)
     await flushPromises()
 
+    // 'tabby' belongs to the Reported listing, so search across all statuses.
+    await wrapper.find('select.status-filter').setValue('all')
     await wrapper.find('input.search-input').setValue('tabby')
 
     expect(cardIds(wrapper)).toEqual([1])
@@ -244,6 +251,7 @@ describe('BrowseListingsView - text search', () => {
     const wrapper = mount(BrowseListingsView)
     await flushPromises()
 
+    await wrapper.find('select.status-filter').setValue('all')
     await wrapper.find('input.search-input').setValue('tabby')
     expect(cardIds(wrapper)).toEqual([1])
 
@@ -309,10 +317,10 @@ describe('BrowseListingsView - pagination', () => {
     await wrapper.findAll('.page-button')[1].trigger('click') // -> page 2
     expect(wrapper.text()).toContain('Page 2 of 2')
 
-    // All 10 fixture listings are status 0 (Open), so this is a genuine
-    // filter change (from the 'all' default) that still leaves 2 pages --
+    // All 10 fixture listings are Open, so switching to "all" still shows
+    // all 10 (2 pages) -- a genuine filter change from the Open default,
     // isolating the page-reset behavior from the separate clamping test.
-    await wrapper.find('select.status-filter').setValue('0')
+    await wrapper.find('select.status-filter').setValue('all')
 
     expect(wrapper.text()).toContain('Page 1 of 2')
   })
@@ -347,6 +355,9 @@ describe('BrowseListingsView - pagination', () => {
     const wrapper = mount(BrowseListingsView)
     await flushPromises()
 
+    // Start from the "all" view (the default is now Open): 10 items across
+    // 2 pages, page 2 holding just the Reported listing.
+    await wrapper.find('select.status-filter').setValue('all')
     await wrapper.findAll('.page-button')[1].trigger('click') // -> page 2 (10 items total)
     expect(wrapper.text()).toContain('Page 2 of 2')
 
