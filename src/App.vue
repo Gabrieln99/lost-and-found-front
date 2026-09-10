@@ -15,7 +15,8 @@ onMounted(() => {
     <div class="mx-auto flex max-w-5xl flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3">
       <RouterLink
         to="/"
-        class="text-base font-semibold text-heading no-underline hover:no-underline"
+        class="text-base font-semibold text-heading no-underline transition-colors hover:text-brand hover:no-underline"
+        title="Home — how it works"
       >
         Lost &amp; Found
       </RouterLink>
@@ -23,7 +24,7 @@ onMounted(() => {
       <nav class="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
         <RouterLink to="/browse" class="nav-link">Browse</RouterLink>
         <RouterLink to="/create-listing" class="nav-link">Publish</RouterLink>
-        <RouterLink to="/about" class="nav-link">About</RouterLink>
+        <RouterLink to="/profile" class="nav-link">My Profile</RouterLink>
       </nav>
 
       <div class="ml-auto">
