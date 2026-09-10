@@ -5,6 +5,8 @@ import { fetchAllListings, STATUS_LABELS, ListingContractError } from '@/service
 import { fetchListingMetadata } from '@/services/ipfsMetadata'
 import { filterByStatus, searchListings, paginate, totalPages, clampPage } from '@/utils/listingFilters'
 import ListingCard from '@/components/ListingCard.vue'
+import Button from '@/components/ui/Button.vue'
+import Alert from '@/components/ui/Alert.vue'
 
 const PAGE_SIZE = 9
 
@@ -99,20 +101,20 @@ function goToPage(page) {
 </script>
 
 <template>
-  <div class="browse-listings">
-    <h1>Browse Listings</h1>
+  <div class="flex flex-col gap-5">
+    <h1 class="text-2xl font-bold tracking-tight">Browse Listings</h1>
 
-    <p v-if="!wallet.isConnected" class="wallet-hint">Connect your wallet to browse listings.</p>
-    <p v-else-if="!wallet.isCorrectNetwork" class="wallet-hint">
+    <Alert v-if="!wallet.isConnected" tone="warning">Connect your wallet to browse listings.</Alert>
+    <Alert v-else-if="!wallet.isCorrectNetwork" tone="warning">
       Switch to Sepolia to browse listings.
-    </p>
-    <p v-else-if="!wallet.contract" class="wallet-hint">
+    </Alert>
+    <Alert v-else-if="!wallet.contract" tone="warning">
       The contract address is not configured yet.
-    </p>
+    </Alert>
 
-    <div v-if="wallet.contract && listings.length > 0" class="controls">
-      <label class="control">
-        <span>Status</span>
+    <div v-if="wallet.contract && listings.length > 0" class="flex flex-wrap items-end gap-4">
+      <label class="flex min-w-[10rem] flex-col gap-1 text-sm">
+        <span class="font-medium text-heading">Status</span>
         <select v-model="statusFilter" class="status-filter">
           <option value="all">All statuses</option>
           <option v-for="(label, index) in STATUS_LABELS" :key="index" :value="index">
@@ -121,8 +123,8 @@ function goToPage(page) {
         </select>
       </label>
 
-      <label class="control search-control">
-        <span>Search</span>
+      <label class="flex flex-1 flex-col gap-1 text-sm min-w-[14rem]">
+        <span class="font-medium text-heading">Search</span>
         <input
           v-model="searchQuery"
           type="search"
@@ -132,112 +134,45 @@ function goToPage(page) {
       </label>
     </div>
 
-    <p v-if="loading">Loading listings…</p>
-    <p v-else-if="loadError" class="load-error">{{ loadError }}</p>
-    <p v-else-if="wallet.contract && listings.length === 0">No listings yet.</p>
-    <p v-else-if="wallet.contract && filteredListings.length === 0" class="no-results">
+    <p v-if="loading" class="text-sm text-muted">Loading listings…</p>
+    <Alert v-else-if="loadError" tone="danger" class="load-error">{{ loadError }}</Alert>
+    <p v-else-if="wallet.contract && listings.length === 0" class="text-sm text-muted">
+      No listings yet.
+    </p>
+    <p
+      v-else-if="wallet.contract && filteredListings.length === 0"
+      class="no-results text-sm text-muted"
+    >
       No listings match your filters.
     </p>
 
-    <div v-if="pagedListings.length > 0" class="listing-grid">
+    <div
+      v-if="pagedListings.length > 0"
+      class="listing-grid grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(16rem,1fr))]"
+    >
       <ListingCard v-for="listing in pagedListings" :key="listing.id" :listing="listing" />
     </div>
 
-    <div v-if="pageCount > 1" class="pagination">
-      <button
-        type="button"
+    <div v-if="pageCount > 1" class="pagination flex items-center justify-center gap-4">
+      <Button
+        variant="secondary"
+        size="sm"
         class="page-button"
         :disabled="currentPage === 1"
         @click="goToPage(currentPage - 1)"
       >
         Previous
-      </button>
-      <span class="page-indicator">Page {{ currentPage }} of {{ pageCount }}</span>
-      <button
-        type="button"
+      </Button>
+      <span class="text-sm text-muted">Page {{ currentPage }} of {{ pageCount }}</span>
+      <Button
+        variant="secondary"
+        size="sm"
         class="page-button"
         :disabled="currentPage === pageCount"
         @click="goToPage(currentPage + 1)"
       >
         Next
-      </button>
+      </Button>
     </div>
   </div>
 </template>
-
-<style scoped>
-.browse-listings {
-  max-width: 64rem;
-  margin: 0 auto;
-  padding: 1rem;
-}
-
-.wallet-hint {
-  color: #a15c00;
-}
-
-.load-error {
-  color: #b3261e;
-}
-
-.no-results {
-  opacity: 0.75;
-}
-
-.controls {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-  margin-top: 1rem;
-}
-
-.control {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  font-size: 0.85rem;
-}
-
-.search-control {
-  flex: 1;
-  min-width: 14rem;
-}
-
-.status-filter,
-.search-input {
-  padding: 0.4rem 0.5rem;
-  border: 1px solid var(--color-border);
-  border-radius: 0.25rem;
-  background: var(--color-background);
-  color: inherit;
-  font: inherit;
-}
-
-.listing-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
-  gap: 1rem;
-  margin-top: 1rem;
-}
-
-.pagination {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 1rem;
-  margin-top: 1.5rem;
-}
-
-.page-button {
-  padding: 0.4rem 1rem;
-  border: 1px solid var(--color-border);
-  border-radius: 0.25rem;
-  background: transparent;
-  color: inherit;
-}
-
-.page-indicator {
-  font-size: 0.9rem;
-  opacity: 0.8;
-}
-</style>

@@ -10,6 +10,9 @@ import {
   ListingContractError,
 } from '@/services/listingContract'
 import { createCancelGate, ignoreLateSettlement, CancelledError } from '@/utils/cancelGate'
+import Button from '@/components/ui/Button.vue'
+import Alert from '@/components/ui/Alert.vue'
+import FormField from '@/components/ui/FormField.vue'
 
 // Matches the storage service's own 10 MB cap so oversized files are
 // rejected client-side before an upload is even attempted.
@@ -182,117 +185,78 @@ function cancelSubmit() {
 </script>
 
 <template>
-  <div class="create-listing">
-    <h1>Publish a lost-item listing</h1>
-
-    <form novalidate @submit="onSubmit">
-      <div class="field">
-        <label for="title">Title</label>
-        <input id="title" v-model="title" type="text" maxlength="100" placeholder="e.g. Lost wallet" />
-        <p v-if="titleError" class="field-error">{{ titleError }}</p>
-      </div>
-
-      <div class="field">
-        <label for="description">Description</label>
-        <textarea id="description" v-model="description" rows="3" maxlength="500" />
-        <p v-if="descriptionError" class="field-error">{{ descriptionError }}</p>
-      </div>
-
-      <div class="field">
-        <label for="location">Location lost</label>
-        <input id="location" v-model="location" type="text" maxlength="200" />
-        <p v-if="locationError" class="field-error">{{ locationError }}</p>
-      </div>
-
-      <div class="field">
-        <label for="image">Photo</label>
-        <input id="image" type="file" accept="image/*" @change="onImageChange" />
-        <p v-if="imageError" class="field-error">{{ imageError }}</p>
-      </div>
-
-      <div class="field">
-        <label for="reward">Reward (ETH)</label>
-        <input id="reward" v-model="reward" type="number" step="any" min="0" />
-        <p v-if="rewardError" class="field-error">{{ rewardError }}</p>
-      </div>
-
-      <div class="field">
-        <label for="expirationDate">Expires (optional)</label>
-        <input id="expirationDate" v-model="expirationDate" type="datetime-local" />
-        <p v-if="expirationDateError" class="field-error">{{ expirationDateError }}</p>
-      </div>
-
-      <p v-if="walletBlockReason && status === 'idle'" class="wallet-hint">
-        {{ walletBlockReason }}
+  <div class="mx-auto flex max-w-xl flex-col gap-6">
+    <div class="flex flex-col gap-1">
+      <h1 class="text-2xl font-bold tracking-tight">Publish a lost-item listing</h1>
+      <p class="text-sm text-muted">
+        Your reward is locked in the contract and only released once you confirm the item is back.
       </p>
+    </div>
 
-      <button type="submit" :disabled="isSubmitting">
+    <form novalidate class="flex flex-col gap-4" @submit="onSubmit">
+      <FormField label="Title" field-id="title" :error="titleError">
+        <input id="title" v-model="title" type="text" maxlength="100" placeholder="e.g. Lost wallet" />
+      </FormField>
+
+      <FormField label="Description" field-id="description" :error="descriptionError">
+        <textarea id="description" v-model="description" rows="3" maxlength="500" />
+      </FormField>
+
+      <FormField label="Location lost" field-id="location" :error="locationError">
+        <input id="location" v-model="location" type="text" maxlength="200" />
+      </FormField>
+
+      <FormField label="Photo" field-id="image" :error="imageError">
+        <input id="image" type="file" accept="image/*" @change="onImageChange" />
+      </FormField>
+
+      <FormField label="Reward (ETH)" field-id="reward" :error="rewardError">
+        <input id="reward" v-model="reward" type="number" step="any" min="0" />
+      </FormField>
+
+      <FormField label="Expires (optional)" field-id="expirationDate" :error="expirationDateError">
+        <input id="expirationDate" v-model="expirationDate" type="datetime-local" />
+      </FormField>
+
+      <Alert v-if="walletBlockReason && status === 'idle'" tone="warning">
+        {{ walletBlockReason }}
+      </Alert>
+
+      <Button type="submit" variant="primary" class="w-full" :disabled="isSubmitting">
         {{ isSubmitting ? statusMessage : 'Publish listing' }}
-      </button>
+      </Button>
 
-      <button
+      <Button
         v-if="status === 'awaiting-signature'"
-        type="button"
-        class="cancel-button"
+        class="cancel-button w-full"
+        variant="secondary"
         @click="cancelSubmit"
       >
         Cancel
-      </button>
+      </Button>
 
-      <p v-if="submitError" class="submit-error">{{ submitError }}</p>
+      <Alert v-if="submitError" tone="danger" class="submit-error">{{ submitError }}</Alert>
 
-      <div v-if="status === 'success' && result" class="submit-success">
-        <p>Listing published!</p>
+      <Alert
+        v-if="status === 'success' && result"
+        as="div"
+        tone="success"
+        class="submit-success flex flex-col gap-1"
+      >
+        <p class="font-medium">Listing published!</p>
         <p v-if="result.listingId !== null">Listing ID: {{ result.listingId.toString() }}</p>
-        <p>
+        <p class="break-all">
           Transaction:
-          <a :href="`https://sepolia.etherscan.io/tx/${result.transactionHash}`" target="_blank" rel="noopener">
+          <a
+            class="font-mono"
+            :href="`https://sepolia.etherscan.io/tx/${result.transactionHash}`"
+            target="_blank"
+            rel="noopener"
+          >
             {{ result.transactionHash }}
           </a>
         </p>
-      </div>
+      </Alert>
     </form>
   </div>
 </template>
-
-<style scoped>
-.create-listing {
-  max-width: 32rem;
-  margin: 0 auto;
-  padding: 1rem;
-}
-
-.field {
-  margin-bottom: 1rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.field-error {
-  color: #b3261e;
-  font-size: 0.85rem;
-  margin: 0;
-}
-
-.wallet-hint {
-  color: #a15c00;
-  font-size: 0.9rem;
-}
-
-.cancel-button {
-  margin-top: 0.5rem;
-  width: 100%;
-  background: transparent;
-  border: 1px solid var(--color-border);
-  color: inherit;
-}
-
-.submit-error {
-  color: #b3261e;
-}
-
-.submit-success {
-  color: #1e7a34;
-}
-</style>
