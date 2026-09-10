@@ -116,7 +116,7 @@ const hasFinder = computed(
 </script>
 
 <template>
-  <div class="flex flex-col gap-5">
+  <div class="mx-auto flex max-w-3xl flex-col gap-5">
     <RouterLink to="/browse" class="text-sm">&larr; Back to listings</RouterLink>
 
     <p v-if="notFound" class="not-found text-sm text-muted">
@@ -131,7 +131,7 @@ const hasFinder = computed(
 
     <article v-else-if="listing" class="listing-detail flex flex-col gap-4">
       <div
-        class="grid aspect-[4/3] max-w-xl place-items-center overflow-hidden rounded-lg bg-surface-soft"
+        class="grid aspect-[4/3] place-items-center overflow-hidden rounded-lg bg-surface-soft"
       >
         <img
           v-if="metadata?.image"

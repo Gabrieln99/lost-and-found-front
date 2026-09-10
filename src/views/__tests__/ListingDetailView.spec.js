@@ -287,15 +287,23 @@ describe('ListingDetailView - actions & messaging', () => {
     expect(wrapper.find('form.message-compose').exists()).toBe(false)
   })
 
-  it('auto-loads the message thread (no toggle) for the finder on a Reported listing', async () => {
+  it('shows the message thread panel (no toggle, no signature) for the finder, loading on click', async () => {
     mockId = '2'
     connectWallet({ address: FINDER })
     fetchListing.mockResolvedValue(rawListing({ id: 2, status: 1, finder: FINDER }))
+    fetchMessages.mockResolvedValue([])
 
     const wrapper = mount(ListingDetailView)
     await settle()
 
     expect(wrapper.find('button.messages-toggle-button').exists()).toBe(false)
+    expect(signReadAuthorization).not.toHaveBeenCalled()
+    const load = wrapper.find('button.messages-retry-button')
+    expect(load.text()).toBe('Load conversation')
+
+    await load.trigger('click')
+    await settle()
+
     expect(signReadAuthorization).toHaveBeenCalledWith(expect.anything(), 2)
     expect(wrapper.find('form.message-compose').exists()).toBe(true)
   })

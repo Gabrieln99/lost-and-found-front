@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted, toRaw } from 'vue'
+import { ref, computed, onUnmounted, toRaw } from 'vue'
 import { useWalletStore } from '@/stores/wallet'
 import {
   signMessageBody,
@@ -188,11 +188,10 @@ function cancelSendMessage() {
   sendCancelGate?.cancel()
 }
 
-onMounted(() => {
-  // Detail view: expand and load immediately. Card: wait for the toggle.
-  if (!props.collapsible) loadMessages()
-})
-
+// No auto-load: even when the panel is visible by default (detail view,
+// collapsible=false) the read-authorization signature is only requested
+// when the user clicks "Load conversation" -- no unprompted wallet popup,
+// same as the Resume button.
 onUnmounted(stopPolling)
 </script>
 
