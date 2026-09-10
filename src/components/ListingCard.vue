@@ -21,6 +21,8 @@ import {
   MessagingServiceError,
 } from '@/services/messagingService'
 import { createCancelGate, ignoreLateSettlement, CancelledError } from '@/utils/cancelGate'
+import Button from '@/components/ui/Button.vue'
+import Alert from '@/components/ui/Alert.vue'
 
 // While a message thread is open, poll for new messages this often --
 // reusing the same signed read-authorization each tick (see
@@ -407,150 +409,207 @@ onUnmounted(stopPolling)
 </script>
 
 <template>
-  <article class="listing-card" :class="statusClass">
-    <div class="listing-image">
+  <article
+    class="listing-card flex flex-col overflow-hidden rounded-lg border border-border bg-surface"
+    :class="statusClass"
+  >
+    <div class="listing-image grid aspect-[4/3] place-items-center overflow-hidden bg-surface-soft">
       <img
         v-if="metadata?.image"
         :src="metadata.image"
         :alt="metadata.description || 'Listing photo'"
+        class="h-full w-full object-cover"
       />
-      <div v-else class="image-placeholder">
+      <div v-else class="image-placeholder text-sm text-muted">
         {{ loadingMetadata ? 'Loading…' : 'No image' }}
       </div>
     </div>
 
-    <div class="listing-body">
-      <span class="status-badge">{{ statusLabel }}</span>
+    <div class="listing-body flex flex-col gap-2 p-3">
+      <span
+        class="status-badge self-start rounded-full px-2 py-0.5 text-xs font-semibold"
+      >{{ statusLabel }}</span>
 
-      <p v-if="loadingMetadata" class="loading">Loading details…</p>
+      <p v-if="loadingMetadata" class="loading text-sm text-muted">Loading details…</p>
       <template v-else-if="metadataError">
-        <p class="metadata-error">{{ metadataError }}</p>
-        <p class="item-cid">CID: {{ currentListing.itemCID }}</p>
+        <Alert tone="danger" class="metadata-error">{{ metadataError }}</Alert>
+        <p class="item-cid font-mono text-xs break-all text-muted">
+          CID: {{ currentListing.itemCID }}
+        </p>
       </template>
       <template v-else>
-        <h3 v-if="metadata.title" class="title">{{ metadata.title }}</h3>
-        <p class="description"><strong>Description:</strong> {{ metadata.description }}</p>
-        <p class="location"><strong>Location:</strong> {{ metadata.location }}</p>
+        <h3 v-if="metadata.title" class="title text-base font-semibold">{{ metadata.title }}</h3>
+        <p class="description text-sm">
+          <strong class="font-medium text-muted">Description:</strong> {{ metadata.description }}
+        </p>
+        <p class="location text-sm">
+          <strong class="font-medium text-muted">Location:</strong> {{ metadata.location }}
+        </p>
       </template>
 
-      <p class="reward"><strong>Reward:</strong> {{ rewardEth }} ETH</p>
+      <p class="reward text-sm">
+        <strong class="font-medium text-muted">Reward:</strong> {{ rewardEth }} ETH
+      </p>
 
       <div v-if="canReportFound" class="listing-action">
-        <button
-          type="button"
-          class="report-found-button"
+        <Button
+          class="report-found-button w-full"
+          variant="secondary"
           :disabled="isActing"
           @click="onReportFound"
         >
           {{ reportFoundLabel }}
-        </button>
+        </Button>
       </div>
 
       <div v-if="canCancelListing" class="listing-action">
-        <button
-          type="button"
-          class="cancel-listing-button"
+        <Button
+          class="cancel-listing-button w-full"
+          variant="secondary"
           :disabled="isActing"
           @click="onCancelListing"
         >
           {{ cancelListingLabel }}
-        </button>
+        </Button>
       </div>
 
-      <div v-if="canConfirmRecovery || canRejectReport" class="listing-action reported-actions">
-        <button
+      <div v-if="canConfirmRecovery || canRejectReport" class="listing-action reported-actions flex gap-2">
+        <Button
           v-if="canConfirmRecovery"
-          type="button"
-          class="confirm-recovery-button"
+          class="confirm-recovery-button flex-1"
+          variant="success"
           :disabled="isActing"
           @click="onConfirmRecovery"
         >
           {{ confirmRecoveryLabel }}
-        </button>
-        <button
+        </Button>
+        <Button
           v-if="canRejectReport"
-          type="button"
-          class="reject-report-button"
+          class="reject-report-button flex-1"
+          variant="warning"
           :disabled="isActing"
           @click="onRejectReport"
         >
           {{ rejectReportLabel }}
-        </button>
+        </Button>
       </div>
 
-      <button
+      <Button
         v-if="actionStatus === 'awaiting-signature'"
-        type="button"
-        class="action-cancel-button"
+        class="action-cancel-button w-full"
+        variant="secondary"
+        size="sm"
         @click="cancelAction"
       >
         Cancel
-      </button>
+      </Button>
 
-      <p v-if="actionError" class="action-error">{{ actionError }}</p>
-      <p v-if="actionStatus === 'success'" class="action-success">{{ actionSuccessMessage }}</p>
+      <Alert v-if="actionError" tone="danger" class="action-error">{{ actionError }}</Alert>
+      <Alert v-if="actionStatus === 'success'" tone="success" class="action-success">
+        {{ actionSuccessMessage }}
+      </Alert>
 
-      <div v-if="canMessageThread" class="listing-action messages-section">
-        <button type="button" class="messages-toggle-button" @click="toggleMessages">
-          {{ messagesOpen ? 'Hide Messages' : 'Messages' }}
-        </button>
+      <div v-if="canMessageThread" class="listing-action messages-section flex flex-col gap-2">
+        <Button
+          class="messages-toggle-button self-start"
+          variant="secondary"
+          size="sm"
+          @click="toggleMessages"
+        >
+          <svg
+            class="h-4 w-4 shrink-0"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+          </svg>
+          <span>{{ messagesOpen ? 'Hide Messages' : 'Messages' }}</span>
+        </Button>
 
-        <div v-if="messagesOpen" class="messages-panel">
+        <div v-if="messagesOpen" class="messages-panel flex flex-col gap-2 border-t border-border pt-2">
           <template v-if="messagesLoading">
-            <p class="messages-status">
+            <p class="messages-status text-sm text-muted">
               Waiting for you to confirm in your wallet to open the thread...
             </p>
-            <button type="button" class="action-cancel-button" @click="cancelLoadMessages">
+            <Button
+              class="action-cancel-button w-full"
+              variant="secondary"
+              size="sm"
+              @click="cancelLoadMessages"
+            >
               Cancel
-            </button>
+            </Button>
           </template>
 
           <template v-else-if="messagesError">
-            <p class="action-error">{{ messagesError }}</p>
-            <button type="button" class="messages-retry-button" @click="loadMessages">
+            <Alert tone="danger" class="action-error">{{ messagesError }}</Alert>
+            <Button
+              class="messages-retry-button w-full"
+              variant="secondary"
+              size="sm"
+              @click="loadMessages"
+            >
               {{ readAuth ? 'Retry' : 'Resume' }}
-            </button>
+            </Button>
           </template>
 
           <template v-else>
-            <ul class="message-list">
-              <li v-if="messages.length === 0" class="message-empty">No messages yet.</li>
-              <li v-for="message in messages" :key="message.id" class="message-item">
-                <div class="message-meta">
+            <ul class="message-list m-0 flex max-h-48 list-none flex-col gap-2 overflow-y-auto p-0">
+              <li v-if="messages.length === 0" class="message-empty text-sm text-muted">
+                No messages yet.
+              </li>
+              <li
+                v-for="message in messages"
+                :key="message.id"
+                class="message-item max-w-[85%] rounded-md px-2 py-1.5"
+                :class="isSelf(message.sender) ? 'ml-auto bg-info-soft' : 'bg-surface-soft'"
+              >
+                <div class="message-meta flex justify-between gap-2 text-[0.7rem] text-muted">
                   <span class="message-sender">
                     {{ shortenAddress(message.sender) }}{{ isSelf(message.sender) ? ' (you)' : '' }}
                   </span>
                   <span class="message-time">{{ formatMessageTimestamp(message.timestamp) }}</span>
                 </div>
-                <p class="message-body">{{ message.body }}</p>
+                <p class="message-body mt-1 whitespace-pre-wrap break-words text-sm">
+                  {{ message.body }}
+                </p>
               </li>
             </ul>
 
-            <form class="message-compose" @submit.prevent="onSendMessage">
+            <form class="message-compose flex flex-col gap-2" @submit.prevent="onSendMessage">
               <textarea
                 v-model="newMessageBody"
                 rows="2"
                 maxlength="2000"
                 placeholder="Write a message..."
                 :disabled="isSendingMessage"
+                class="resize-y"
               />
-              <button
+              <Button
                 type="submit"
-                class="message-send-button"
+                class="message-send-button w-full"
+                variant="primary"
+                size="sm"
                 :disabled="isSendingMessage || !newMessageBody.trim()"
               >
                 {{ sendButtonLabel }}
-              </button>
-              <button
+              </Button>
+              <Button
                 v-if="sendStatus === 'awaiting-signature'"
-                type="button"
-                class="action-cancel-button"
+                class="action-cancel-button w-full"
+                variant="secondary"
+                size="sm"
                 @click="cancelSendMessage"
               >
                 Cancel
-              </button>
+              </Button>
             </form>
-            <p v-if="sendError" class="action-error">{{ sendError }}</p>
+            <Alert v-if="sendError" tone="danger" class="action-error">{{ sendError }}</Alert>
           </template>
         </div>
       </div>
@@ -559,240 +618,45 @@ onUnmounted(stopPolling)
 </template>
 
 <style scoped>
-.listing-card {
-  border: 1px solid var(--color-border);
-  border-radius: 0.5rem;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.listing-image {
-  aspect-ratio: 4 / 3;
-  background: var(--color-background-soft);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.listing-image img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.image-placeholder {
-  color: var(--color-text);
-  opacity: 0.6;
-  font-size: 0.85rem;
-}
-
-.listing-body {
-  padding: 0.75rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-
+/*
+  Only the status-badge colour theming stays as scoped CSS: it keys off the
+  root's `status-*` class (set by the statusClass computed) so the badge can
+  be coloured per status without adding a status->tone mapping to the
+  script, and without changing the root's class list that the specs assert
+  on. Everything else is Tailwind utilities in the template.
+*/
 .status-badge {
-  display: inline-block;
-  align-self: flex-start;
-  font-size: 0.75rem;
-  font-weight: bold;
-  padding: 0.15rem 0.5rem;
-  border-radius: 1rem;
-  background: var(--color-background-soft);
+  background: var(--color-surface-soft);
+  color: var(--color-muted);
 }
 
 .status-open .status-badge {
-  background: #dff3e0;
-  color: #1e7a34;
+  background: var(--color-success-soft);
+  color: var(--color-success);
 }
 
 .status-reported .status-badge {
-  background: #fff2cc;
-  color: #a15c00;
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
 }
 
 .status-resolved .status-badge {
-  background: #dbe7ff;
-  color: #1a4fa0;
+  background: var(--color-info-soft);
+  color: var(--color-info);
 }
 
-.status-cancelled .status-badge,
+.status-cancelled .status-badge {
+  background: var(--color-surface-muted);
+  color: var(--color-muted);
+}
+
 .status-cancelled .description,
 .status-cancelled .location {
-  background: #eee;
-  color: #888;
+  color: var(--color-muted);
 }
 
 .listing-card.status-cancelled,
 .listing-card.status-resolved {
   opacity: 0.7;
-}
-
-.title {
-  margin: 0;
-  font-size: 1rem;
-}
-
-.metadata-error {
-  color: #b3261e;
-  font-size: 0.85rem;
-}
-
-.item-cid {
-  font-family: monospace;
-  font-size: 0.75rem;
-  word-break: break-all;
-  opacity: 0.7;
-}
-
-.reward {
-  font-weight: bold;
-}
-
-.listing-action {
-  margin-top: 0.25rem;
-}
-
-.listing-action button {
-  width: 100%;
-}
-
-.report-found-button,
-.cancel-listing-button {
-  background: transparent;
-  border: 1px solid var(--color-border);
-  color: inherit;
-}
-
-/* Reported listings show two opposite owner actions side by side --
-   visually distinct so they can't be confused: Confirm Recovery (releases
-   the reward -- positive/primary) vs Reject Report (disputes the claim --
-   warning/secondary). */
-.reported-actions {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.reported-actions button {
-  flex: 1;
-}
-
-.confirm-recovery-button {
-  background: #1e7a34;
-  border: 1px solid #1e7a34;
-  color: #fff;
-  font-weight: bold;
-}
-
-.reject-report-button {
-  background: transparent;
-  border: 1px solid #a15c00;
-  color: #a15c00;
-}
-
-.action-cancel-button {
-  width: 100%;
-  margin-top: 0.35rem;
-  background: transparent;
-  border: 1px solid var(--color-border);
-  color: inherit;
-}
-
-.action-error {
-  color: #b3261e;
-  font-size: 0.85rem;
-  margin: 0.25rem 0 0;
-}
-
-.action-success {
-  color: #1e7a34;
-  font-size: 0.85rem;
-}
-
-.messages-toggle-button {
-  background: transparent;
-  border: 1px solid var(--color-border);
-  color: inherit;
-}
-
-.messages-panel {
-  margin-top: 0.5rem;
-  padding-top: 0.5rem;
-  border-top: 1px solid var(--color-border);
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.messages-status {
-  font-size: 0.85rem;
-  opacity: 0.8;
-}
-
-.messages-retry-button {
-  width: 100%;
-  background: transparent;
-  border: 1px solid var(--color-border);
-  color: inherit;
-}
-
-.message-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  max-height: 12rem;
-  overflow-y: auto;
-}
-
-.message-empty {
-  font-size: 0.85rem;
-  opacity: 0.7;
-}
-
-.message-item {
-  padding: 0.4rem 0.5rem;
-  border-radius: 0.35rem;
-  background: var(--color-background-soft);
-}
-
-.message-meta {
-  display: flex;
-  justify-content: space-between;
-  gap: 0.5rem;
-  font-size: 0.7rem;
-  opacity: 0.7;
-}
-
-.message-body {
-  margin: 0.2rem 0 0;
-  font-size: 0.85rem;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.message-compose {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-
-.message-compose textarea {
-  resize: vertical;
-  font: inherit;
-  padding: 0.4rem;
-  border: 1px solid var(--color-border);
-  border-radius: 0.25rem;
-  background: var(--color-background);
-  color: inherit;
-}
-
-.message-send-button {
-  width: 100%;
 }
 </style>
