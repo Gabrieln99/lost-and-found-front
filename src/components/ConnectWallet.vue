@@ -1,6 +1,8 @@
 <script setup>
 import { computed } from 'vue'
 import { useWalletStore } from '@/stores/wallet'
+import Button from '@/components/ui/Button.vue'
+import Alert from '@/components/ui/Alert.vue'
 
 const wallet = useWalletStore()
 
@@ -11,22 +13,32 @@ const shortAddress = computed(() => {
 </script>
 
 <template>
-  <div class="connect-wallet">
-    <button v-if="!wallet.isConnected" type="button" :disabled="wallet.isConnecting" @click="wallet.connect()">
+  <div class="flex flex-col items-end gap-2">
+    <Button
+      v-if="!wallet.isConnected"
+      variant="primary"
+      size="sm"
+      :disabled="wallet.isConnecting"
+      @click="wallet.connect()"
+    >
       {{ wallet.isConnecting ? 'Connecting…' : 'Connect Wallet' }}
-    </button>
+    </Button>
 
-    <div v-else class="connected">
-      <span class="address" :title="wallet.address">{{ shortAddress }}</span>
-      <button type="button" @click="wallet.disconnect()">Disconnect</button>
+    <div v-else class="flex items-center gap-2">
+      <span class="font-mono text-sm text-muted" :title="wallet.address">{{ shortAddress }}</span>
+      <Button variant="ghost" size="sm" @click="wallet.disconnect()">Disconnect</Button>
     </div>
 
-    <p v-if="wallet.isConnected && !wallet.isCorrectNetwork" class="warning">
-      Wrong network — please switch to Sepolia.
-      <button type="button" @click="wallet.switchToSepolia()">Switch to Sepolia</button>
-    </p>
+    <Alert
+      v-if="wallet.isConnected && !wallet.isCorrectNetwork"
+      tone="warning"
+      class="flex flex-wrap items-center gap-2"
+    >
+      <span>Wrong network — please switch to Sepolia.</span>
+      <Button variant="secondary" size="sm" @click="wallet.switchToSepolia()">Switch to Sepolia</Button>
+    </Alert>
 
-    <p v-if="wallet.error" class="error">
+    <Alert v-if="wallet.error" tone="danger">
       {{ wallet.error.message }}
       <a
         v-if="wallet.error.code === 'NO_WALLET'"
@@ -36,35 +48,6 @@ const shortAddress = computed(() => {
       >
         Install MetaMask
       </a>
-    </p>
+    </Alert>
   </div>
 </template>
-
-<style scoped>
-.connect-wallet {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.5rem;
-}
-
-.connected {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.address {
-  font-family: monospace;
-}
-
-.warning {
-  color: #a15c00;
-  font-size: 0.85rem;
-}
-
-.error {
-  color: #b3261e;
-  font-size: 0.85rem;
-}
-</style>
