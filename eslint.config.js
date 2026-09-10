@@ -25,6 +25,16 @@ export default defineConfig([
   ...pluginVue.configs['flat/essential'],
 
   {
+    // Generic single-word names (Button, Card, Alert, ...) are intentional
+    // for the shared UI primitives.
+    name: 'app/ui-primitives',
+    files: ['src/components/ui/*.vue'],
+    rules: {
+      'vue/multi-word-component-names': 'off',
+    },
+  },
+
+  {
     ...pluginVitest.configs.recommended,
     files: ['src/**/__tests__/*'],
   },
