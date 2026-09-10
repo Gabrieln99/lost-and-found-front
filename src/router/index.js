@@ -20,6 +20,11 @@ const router = createRouter({
       component: () => import('../views/BrowseListingsView.vue'),
     },
     {
+      path: '/listing/:id',
+      name: 'listing-detail',
+      component: () => import('../views/ListingDetailView.vue'),
+    },
+    {
       path: '/profile',
       name: 'profile',
       component: () => import('../views/ProfileView.vue'),
