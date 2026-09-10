@@ -24,7 +24,9 @@ const loadError = ref('')
 // won't match a text search until/unless it does.
 const metadataById = ref({})
 
-const statusFilter = ref('all') // 'all' | 0 | 1 | 2 | 3
+// Default to Open so first-time visitors land on active listings; "All
+// statuses" (incl. Resolved / Cancelled) stays one dropdown click away.
+const statusFilter = ref(0) // 'all' | 0 | 1 | 2 | 3
 const searchQuery = ref('')
 const currentPage = ref(1)
 
