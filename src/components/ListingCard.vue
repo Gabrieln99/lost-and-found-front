@@ -425,7 +425,7 @@ onUnmounted(stopPolling)
       </div>
     </div>
 
-    <div class="listing-body flex flex-col gap-2 p-3">
+    <div class="listing-body flex flex-1 flex-col gap-2 p-3">
       <span
         class="status-badge self-start rounded-full px-2 py-0.5 text-xs font-semibold"
       >{{ statusLabel }}</span>
@@ -451,6 +451,9 @@ onUnmounted(stopPolling)
         <strong class="font-medium text-muted">Reward:</strong> {{ rewardEth }} ETH
       </p>
 
+      <!-- Pushed to the bottom of the card (mt-auto) so action buttons line
+           up across a grid row regardless of how much text is above. -->
+      <div class="listing-actions mt-auto flex flex-col gap-2">
       <div v-if="canReportFound" class="listing-action">
         <Button
           class="report-found-button w-full"
@@ -612,6 +615,7 @@ onUnmounted(stopPolling)
             <Alert v-if="sendError" tone="danger" class="action-error">{{ sendError }}</Alert>
           </template>
         </div>
+      </div>
       </div>
     </div>
   </article>
