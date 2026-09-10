@@ -42,7 +42,10 @@ const {
     class="listing-card flex flex-col overflow-hidden rounded-lg border border-border bg-surface"
     :class="statusClass"
   >
-    <div class="listing-image grid aspect-[4/3] place-items-center overflow-hidden bg-surface-soft">
+    <RouterLink
+      :to="{ name: 'listing-detail', params: { id: currentListing.id } }"
+      class="listing-image grid aspect-[4/3] place-items-center overflow-hidden bg-surface-soft no-underline hover:no-underline"
+    >
       <img
         v-if="metadata?.image"
         :src="metadata.image"
@@ -52,7 +55,7 @@ const {
       <div v-else class="image-placeholder text-sm text-muted">
         {{ loadingMetadata ? 'Loading…' : 'No image' }}
       </div>
-    </div>
+    </RouterLink>
 
     <div class="listing-body flex flex-1 flex-col gap-2 p-3">
       <span
@@ -67,7 +70,13 @@ const {
         </p>
       </template>
       <template v-else>
-        <h3 v-if="metadata.title" class="title text-base font-semibold">{{ metadata.title }}</h3>
+        <RouterLink
+          v-if="metadata.title"
+          :to="{ name: 'listing-detail', params: { id: currentListing.id } }"
+          class="no-underline hover:underline"
+        >
+          <h3 class="title text-base font-semibold">{{ metadata.title }}</h3>
+        </RouterLink>
         <p class="description text-sm">
           <strong class="font-medium text-muted">Description:</strong> {{ metadata.description }}
         </p>

@@ -259,7 +259,7 @@ describe('ListingMessageThread', () => {
   })
 
   describe('non-collapsible (detail view usage)', () => {
-    it('renders no toggle, auto-loads on mount, and shows the thread', async () => {
+    it('shows the panel with a Load-conversation button but requests no signature until clicked', async () => {
       signReadAuthorization.mockResolvedValue({ timestamp: 1700000000, signature: '0xreadsig' })
       fetchMessages.mockResolvedValue([STORED_MESSAGE])
 
@@ -267,16 +267,26 @@ describe('ListingMessageThread', () => {
       await flushPromises()
 
       expect(wrapper.find('button.messages-toggle-button').exists()).toBe(false)
-      expect(signReadAuthorization).toHaveBeenCalledTimes(1)
       expect(wrapper.find('.messages-panel').exists()).toBe(true)
+      expect(signReadAuthorization).not.toHaveBeenCalled()
+
+      const load = wrapper.find('button.messages-retry-button')
+      expect(load.text()).toBe('Load conversation')
+
+      await load.trigger('click')
+      await flushPromises()
+
+      expect(signReadAuthorization).toHaveBeenCalledTimes(1)
       expect(wrapper.find('form.message-compose').exists()).toBe(true)
       expect(wrapper.text()).toContain('Meet at the fountain at noon')
     })
 
-    it('offers "Load conversation" if the initial auto-load is cancelled', async () => {
+    it('returns to "Load conversation" if that load is cancelled', async () => {
       signReadAuthorization.mockReturnValue(new Promise(() => {})) // hangs forever
 
       const wrapper = mountThread({ collapsible: false })
+      await flushPromises()
+      await wrapper.find('button.messages-retry-button').trigger('click') // Load conversation
       await flushPromises()
 
       await wrapper.find('.messages-panel button.action-cancel-button').trigger('click')
@@ -285,8 +295,7 @@ describe('ListingMessageThread', () => {
         await new Promise((r) => setTimeout(r, 0))
       }
 
-      const reload = wrapper.find('button.messages-retry-button')
-      expect(reload.text()).toBe('Load conversation')
+      expect(wrapper.find('button.messages-retry-button').text()).toBe('Load conversation')
     })
   })
 })
