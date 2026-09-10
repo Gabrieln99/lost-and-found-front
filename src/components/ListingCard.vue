@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, toRaw } from 'vue'
 import { formatEther } from 'ethers'
 import { useWalletStore } from '@/stores/wallet'
 import {
@@ -300,7 +300,18 @@ async function loadMessages() {
   readCancelGate = createCancelGate()
 
   try {
-    const signer = wallet.contract.runner
+    // toRaw() is required here, not cosmetic: wallet.contract is a Pinia
+    // ref, so accessing .runner off it returns a Vue-reactive Proxy of
+    // the real ethers Signer. ethers' Contract class avoids true private
+    // class fields specifically to stay Proxy-safe, but JsonRpcSigner and
+    // JsonRpcApiProvider (which BrowserProvider extends) do use real
+    // `#privateFields` (e.g. #notReady) -- calling a method through the
+    // reactive Proxy runs it with `this` set to the Proxy, and reading a
+    // private field then throws "Cannot read private member #notReady
+    // from an object whose class did not declare it" (confirmed via a
+    // minimal Vue reactive()-wrapped repro reproducing the exact error).
+    // Unwrapping back to the raw signer here sidesteps the whole issue.
+    const signer = toRaw(wallet.contract).runner
     const signPromise = signReadAuthorization(signer, currentListing.value.id)
     ignoreLateSettlement(signPromise)
     readAuth.value = await Promise.race([signPromise, readCancelGate.promise])
@@ -363,7 +374,8 @@ async function onSendMessage() {
 
   try {
     sendStatus.value = 'awaiting-signature'
-    const signer = wallet.contract.runner
+    // toRaw() is required here -- see loadMessages()'s identical line for why.
+    const signer = toRaw(wallet.contract).runner
     const signPromise = signMessageBody(signer, { listingId: currentListing.value.id, body })
     ignoreLateSettlement(signPromise)
     const signed = await Promise.race([signPromise, sendCancelGate.promise])
