@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 
@@ -20,6 +20,17 @@ vi.mock('@/services/listingContract', async (importOriginal) => {
   }
 })
 
+vi.mock('@/services/messagingService', async (importOriginal) => {
+  const actual = await importOriginal()
+  return {
+    ...actual,
+    signMessageBody: vi.fn(),
+    signReadAuthorization: vi.fn(),
+    postMessage: vi.fn(),
+    fetchMessages: vi.fn(),
+  }
+})
+
 import ListingCard from '../ListingCard.vue'
 import { useWalletStore } from '@/stores/wallet'
 import { fetchListingMetadata, IpfsMetadataError } from '@/services/ipfsMetadata'
@@ -32,9 +43,17 @@ import {
   fetchListing,
   ListingContractError,
 } from '@/services/listingContract'
+import {
+  signMessageBody,
+  signReadAuthorization,
+  postMessage,
+  fetchMessages,
+  MessagingServiceError,
+} from '@/services/messagingService'
 
 const OWNER_ADDRESS = '0xOwner0000000000000000000000000000000001'
 const OTHER_ADDRESS = '0xFinder000000000000000000000000000000002'
+const STRANGER_ADDRESS = '0xStranger0000000000000000000000000000003'
 
 function baseListing(overrides = {}) {
   return {
@@ -59,6 +78,7 @@ function connectWallet(overrides = {}) {
     confirmRecovery: vi.fn(),
     cancelListing: vi.fn(),
     rejectReport: vi.fn(),
+    runner: { signMessage: vi.fn() },
   }
   return store
 }
@@ -637,5 +657,369 @@ describe('ListingCard - Confirm Recovery / Reject Report', () => {
     expect(wrapper.find('button.reject-report-button').text()).toBe('Reject Report')
     expect(wrapper.find('button.confirm-recovery-button').attributes('disabled')).toBeUndefined()
     expect(wrapper.find('.action-error').exists()).toBe(false)
+  })
+})
+
+describe('ListingCard - Messages', () => {
+  const STORED_MESSAGE = {
+    id: 1,
+    listingId: 0,
+    sender: OWNER_ADDRESS,
+    body: 'Meet at the fountain at noon',
+    timestamp: 1700000000,
+  }
+
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    fetchListingMetadata.mockResolvedValue({ description: '', location: '', image: null })
+  })
+
+  it('is hidden when the wallet is not connected', async () => {
+    const wrapper = mount(ListingCard, { props: { listing: baseListing({ status: 1 }) } })
+    await flushPromises()
+
+    expect(wrapper.find('button.messages-toggle-button').exists()).toBe(false)
+  })
+
+  it('is hidden for a non-Reported listing, even for the owner', async () => {
+    connectWallet({ address: OWNER_ADDRESS })
+
+    const wrapper = mount(ListingCard, { props: { listing: baseListing({ status: 0 }) } })
+    await flushPromises()
+
+    expect(wrapper.find('button.messages-toggle-button').exists()).toBe(false)
+  })
+
+  it('is hidden from a stranger (neither owner nor finder) on a Reported listing', async () => {
+    connectWallet({ address: STRANGER_ADDRESS })
+
+    const wrapper = mount(ListingCard, {
+      props: { listing: baseListing({ status: 1, finder: OTHER_ADDRESS }) },
+    })
+    await flushPromises()
+
+    expect(wrapper.find('button.messages-toggle-button').exists()).toBe(false)
+  })
+
+  it('is shown to the owner on a Reported listing', async () => {
+    connectWallet({ address: OWNER_ADDRESS })
+
+    const wrapper = mount(ListingCard, {
+      props: { listing: baseListing({ status: 1, finder: OTHER_ADDRESS }) },
+    })
+    await flushPromises()
+
+    expect(wrapper.find('button.messages-toggle-button').exists()).toBe(true)
+  })
+
+  it('is shown to the finder on a Reported listing', async () => {
+    connectWallet({ address: OTHER_ADDRESS })
+
+    const wrapper = mount(ListingCard, {
+      props: { listing: baseListing({ status: 1, finder: OTHER_ADDRESS }) },
+    })
+    await flushPromises()
+
+    expect(wrapper.find('button.messages-toggle-button').exists()).toBe(true)
+  })
+
+  describe('opening the thread', () => {
+    it('signs a read authorization once and displays the returned messages', async () => {
+      const store = connectWallet({ address: OWNER_ADDRESS })
+      signReadAuthorization.mockResolvedValue({ timestamp: 1700000000, signature: '0xreadsig' })
+      fetchMessages.mockResolvedValue([STORED_MESSAGE])
+
+      const wrapper = mount(ListingCard, {
+        props: { listing: baseListing({ status: 1, finder: OTHER_ADDRESS }) },
+      })
+      await flushPromises()
+
+      await wrapper.find('button.messages-toggle-button').trigger('click')
+      await flushPromises()
+
+      expect(signReadAuthorization).toHaveBeenCalledTimes(1)
+      expect(signReadAuthorization).toHaveBeenCalledWith(store.contract.runner, 0)
+      expect(fetchMessages).toHaveBeenCalledWith(0, { timestamp: 1700000000, signature: '0xreadsig' })
+      expect(wrapper.text()).toContain('Meet at the fountain at noon')
+      expect(wrapper.text()).toContain('(you)') // OWNER_ADDRESS is the connected wallet
+    })
+
+    it('shows an empty-thread message when there are no messages yet', async () => {
+      connectWallet({ address: OWNER_ADDRESS })
+      signReadAuthorization.mockResolvedValue({ timestamp: 1700000000, signature: '0xreadsig' })
+      fetchMessages.mockResolvedValue([])
+
+      const wrapper = mount(ListingCard, {
+        props: { listing: baseListing({ status: 1, finder: OTHER_ADDRESS }) },
+      })
+      await flushPromises()
+      await wrapper.find('button.messages-toggle-button').trigger('click')
+      await flushPromises()
+
+      expect(wrapper.text()).toContain('No messages yet.')
+    })
+
+    it('shows an error and a Resume button when signing or fetching fails', async () => {
+      connectWallet({ address: OWNER_ADDRESS })
+      signReadAuthorization.mockRejectedValue(
+        new MessagingServiceError('Transaction was rejected in your wallet.'),
+      )
+
+      const wrapper = mount(ListingCard, {
+        props: { listing: baseListing({ status: 1, finder: OTHER_ADDRESS }) },
+      })
+      await flushPromises()
+      await wrapper.find('button.messages-toggle-button').trigger('click')
+      await flushPromises()
+
+      expect(wrapper.text()).toContain('Transaction was rejected in your wallet.')
+      expect(wrapper.find('button.messages-retry-button').text()).toBe('Resume')
+    })
+
+    it('lets the user cancel out of the awaiting-signature state, closing the panel', async () => {
+      connectWallet({ address: OWNER_ADDRESS })
+      signReadAuthorization.mockReturnValue(new Promise(() => {})) // hangs forever
+
+      const wrapper = mount(ListingCard, {
+        props: { listing: baseListing({ status: 1, finder: OTHER_ADDRESS }) },
+      })
+      await flushPromises()
+      await wrapper.find('button.messages-toggle-button').trigger('click')
+      await flushPromises()
+
+      const cancelButton = wrapper.find('.messages-panel button.action-cancel-button')
+      expect(cancelButton.exists()).toBe(true)
+
+      await cancelButton.trigger('click')
+      for (let i = 0; i < 5; i++) {
+        await flushPromises()
+        await new Promise((resolve) => setTimeout(resolve, 0))
+      }
+
+      expect(wrapper.find('.messages-panel').exists()).toBe(false)
+      expect(wrapper.find('.action-error').exists()).toBe(false)
+    })
+  })
+
+  describe('polling', () => {
+    beforeEach(() => {
+      vi.useFakeTimers()
+    })
+
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('polls with the same signed credential, without re-signing', async () => {
+      connectWallet({ address: OWNER_ADDRESS })
+      signReadAuthorization.mockResolvedValue({ timestamp: 1700000000, signature: '0xreadsig' })
+      fetchMessages.mockResolvedValue([STORED_MESSAGE])
+
+      const wrapper = mount(ListingCard, {
+        props: { listing: baseListing({ status: 1, finder: OTHER_ADDRESS }) },
+      })
+      await flushPromises()
+      await wrapper.find('button.messages-toggle-button').trigger('click')
+      await flushPromises()
+
+      expect(signReadAuthorization).toHaveBeenCalledTimes(1)
+      expect(fetchMessages).toHaveBeenCalledTimes(1)
+
+      await vi.advanceTimersByTimeAsync(15_000)
+      await vi.advanceTimersByTimeAsync(15_000)
+
+      expect(signReadAuthorization).toHaveBeenCalledTimes(1) // still just the one signature
+      expect(fetchMessages).toHaveBeenCalledTimes(3)
+      expect(fetchMessages).toHaveBeenCalledWith(0, { timestamp: 1700000000, signature: '0xreadsig' })
+    })
+
+    it('stops polling and requires a Resume once the credential goes stale', async () => {
+      connectWallet({ address: OWNER_ADDRESS })
+      signReadAuthorization.mockResolvedValue({ timestamp: 1700000000, signature: '0xreadsig' })
+      fetchMessages.mockResolvedValueOnce([STORED_MESSAGE])
+      fetchMessages.mockRejectedValueOnce(
+        new MessagingServiceError('Timestamp is too far from the server\'s clock.'),
+      )
+
+      const wrapper = mount(ListingCard, {
+        props: { listing: baseListing({ status: 1, finder: OTHER_ADDRESS }) },
+      })
+      await flushPromises()
+      await wrapper.find('button.messages-toggle-button').trigger('click')
+      await flushPromises()
+
+      await vi.advanceTimersByTimeAsync(15_000)
+
+      expect(wrapper.text()).toContain("Timestamp is too far from the server's clock.")
+      const resumeButton = wrapper.find('button.messages-retry-button')
+      expect(resumeButton.text()).toBe('Resume')
+
+      // No further polling while stopped.
+      fetchMessages.mockClear()
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(fetchMessages).not.toHaveBeenCalled()
+
+      // Resuming re-signs.
+      fetchMessages.mockResolvedValue([STORED_MESSAGE])
+      await resumeButton.trigger('click')
+      await flushPromises()
+
+      expect(signReadAuthorization).toHaveBeenCalledTimes(2)
+    })
+
+    it('stops polling once the thread is closed', async () => {
+      connectWallet({ address: OWNER_ADDRESS })
+      signReadAuthorization.mockResolvedValue({ timestamp: 1700000000, signature: '0xreadsig' })
+      fetchMessages.mockResolvedValue([STORED_MESSAGE])
+
+      const wrapper = mount(ListingCard, {
+        props: { listing: baseListing({ status: 1, finder: OTHER_ADDRESS }) },
+      })
+      await flushPromises()
+      await wrapper.find('button.messages-toggle-button').trigger('click')
+      await flushPromises()
+
+      await wrapper.find('button.messages-toggle-button').trigger('click') // Hide Messages
+      fetchMessages.mockClear()
+
+      await vi.advanceTimersByTimeAsync(60_000)
+
+      expect(fetchMessages).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('sending a message', () => {
+    it('walks through signature/sending states and appends the new message', async () => {
+      const store = connectWallet({ address: OWNER_ADDRESS })
+      signReadAuthorization.mockResolvedValue({ timestamp: 1700000000, signature: '0xreadsig' })
+      fetchMessages.mockResolvedValue([])
+      signMessageBody.mockResolvedValue({
+        timestamp: 1700000100,
+        body: 'On my way',
+        signature: '0xsendsig',
+      })
+      postMessage.mockResolvedValue({
+        id: 2,
+        listingId: 0,
+        sender: OWNER_ADDRESS,
+        body: 'On my way',
+        timestamp: 1700000100,
+      })
+
+      const wrapper = mount(ListingCard, {
+        props: { listing: baseListing({ status: 1, finder: OTHER_ADDRESS }) },
+      })
+      await flushPromises()
+      await wrapper.find('button.messages-toggle-button').trigger('click')
+      await flushPromises()
+
+      await wrapper.find('textarea').setValue('On my way')
+      await wrapper.find('form.message-compose').trigger('submit')
+      await flushPromises()
+
+      expect(signMessageBody).toHaveBeenCalledWith(store.contract.runner, {
+        listingId: 0,
+        body: 'On my way',
+      })
+      expect(postMessage).toHaveBeenCalledWith(0, {
+        timestamp: 1700000100,
+        body: 'On my way',
+        signature: '0xsendsig',
+      })
+      expect(wrapper.text()).toContain('On my way')
+      expect(wrapper.find('textarea').element.value).toBe('')
+    })
+
+    it('does not submit a blank message', async () => {
+      connectWallet({ address: OWNER_ADDRESS })
+      signReadAuthorization.mockResolvedValue({ timestamp: 1700000000, signature: '0xreadsig' })
+      fetchMessages.mockResolvedValue([])
+
+      const wrapper = mount(ListingCard, {
+        props: { listing: baseListing({ status: 1, finder: OTHER_ADDRESS }) },
+      })
+      await flushPromises()
+      await wrapper.find('button.messages-toggle-button').trigger('click')
+      await flushPromises()
+
+      await wrapper.find('textarea').setValue('   ')
+      await wrapper.find('form.message-compose').trigger('submit')
+      await flushPromises()
+
+      expect(signMessageBody).not.toHaveBeenCalled()
+    })
+
+    it('shows an error and keeps the compose form usable when sending fails', async () => {
+      connectWallet({ address: OWNER_ADDRESS })
+      signReadAuthorization.mockResolvedValue({ timestamp: 1700000000, signature: '0xreadsig' })
+      fetchMessages.mockResolvedValue([])
+      signMessageBody.mockRejectedValue(
+        new MessagingServiceError('Transaction was rejected in your wallet.'),
+      )
+
+      const wrapper = mount(ListingCard, {
+        props: { listing: baseListing({ status: 1, finder: OTHER_ADDRESS }) },
+      })
+      await flushPromises()
+      await wrapper.find('button.messages-toggle-button').trigger('click')
+      await flushPromises()
+
+      await wrapper.find('textarea').setValue('hello')
+      await wrapper.find('form.message-compose').trigger('submit')
+      await flushPromises()
+
+      expect(wrapper.text()).toContain('Transaction was rejected in your wallet.')
+      expect(wrapper.find('button.message-send-button').attributes('disabled')).toBeUndefined()
+    })
+
+    it('lets the user cancel out of the awaiting-signature state while sending', async () => {
+      connectWallet({ address: OWNER_ADDRESS })
+      signReadAuthorization.mockResolvedValue({ timestamp: 1700000000, signature: '0xreadsig' })
+      fetchMessages.mockResolvedValue([])
+      signMessageBody.mockReturnValue(new Promise(() => {})) // hangs forever
+
+      const wrapper = mount(ListingCard, {
+        props: { listing: baseListing({ status: 1, finder: OTHER_ADDRESS }) },
+      })
+      await flushPromises()
+      await wrapper.find('button.messages-toggle-button').trigger('click')
+      await flushPromises()
+
+      await wrapper.find('textarea').setValue('hello')
+      await wrapper.find('form.message-compose').trigger('submit')
+      await flushPromises()
+
+      const cancelButton = wrapper.find('.message-compose button.action-cancel-button')
+      expect(cancelButton.exists()).toBe(true)
+      await cancelButton.trigger('click')
+      for (let i = 0; i < 5; i++) {
+        await flushPromises()
+        await new Promise((resolve) => setTimeout(resolve, 0))
+      }
+
+      expect(postMessage).not.toHaveBeenCalled()
+      expect(wrapper.find('button.message-send-button').text()).toBe('Send')
+      expect(wrapper.find('.action-error').exists()).toBe(false)
+    })
+  })
+
+  it('closes the thread automatically once the card is no longer eligible for messaging', async () => {
+    connectWallet({ address: OWNER_ADDRESS })
+    signReadAuthorization.mockResolvedValue({ timestamp: 1700000000, signature: '0xreadsig' })
+    fetchMessages.mockResolvedValue([])
+
+    const wrapper = mount(ListingCard, {
+      props: { listing: baseListing({ id: 0, status: 1, finder: OTHER_ADDRESS }) },
+    })
+    await flushPromises()
+    await wrapper.find('button.messages-toggle-button').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.messages-panel').exists()).toBe(true)
+
+    await wrapper.setProps({ listing: baseListing({ id: 0, status: 2, finder: OTHER_ADDRESS }) })
+    await flushPromises()
+
+    expect(wrapper.find('button.messages-toggle-button').exists()).toBe(false)
   })
 })

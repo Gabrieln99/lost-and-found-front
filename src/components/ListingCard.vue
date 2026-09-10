@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, toRaw } from 'vue'
 import { formatEther } from 'ethers'
 import { useWalletStore } from '@/stores/wallet'
 import {
@@ -13,7 +13,19 @@ import {
   ListingContractError,
 } from '@/services/listingContract'
 import { fetchListingMetadata, IpfsMetadataError } from '@/services/ipfsMetadata'
+import {
+  signMessageBody,
+  signReadAuthorization,
+  postMessage,
+  fetchMessages,
+  MessagingServiceError,
+} from '@/services/messagingService'
 import { createCancelGate, ignoreLateSettlement, CancelledError } from '@/utils/cancelGate'
+
+// While a message thread is open, poll for new messages this often --
+// reusing the same signed read-authorization each tick (see
+// loadMessages/startPolling below), not re-signing per poll.
+const POLL_INTERVAL_MS = 15_000
 
 const SIGNING_LABEL = 'Waiting for you to confirm in your wallet...'
 
@@ -91,6 +103,11 @@ const isOwner = computed(() => {
   return wallet.address.toLowerCase() === currentListing.value.owner.toLowerCase()
 })
 
+const isFinder = computed(() => {
+  if (!wallet.address) return false
+  return wallet.address.toLowerCase() === currentListing.value.finder.toLowerCase()
+})
+
 // Open listings can be reported by anyone except their own owner.
 const canReportFound = computed(() => {
   if (currentListing.value.status !== 0) return false
@@ -121,6 +138,16 @@ const canRejectReport = computed(() => {
   if (currentListing.value.status !== 1) return false
   if (!wallet.contract) return false
   return isOwner.value
+})
+
+// Owner or finder, on a Reported listing: coordinate the handover via a
+// simple signed chat. Not shown to anyone else, and not shown once the
+// listing moves past Reported (Resolved/Cancelled) -- the handover is
+// what this thread exists for.
+const canMessageThread = computed(() => {
+  if (currentListing.value.status !== 1) return false
+  if (!wallet.contract) return false
+  return isOwner.value || isFinder.value
 })
 
 const actionKind = ref(null) // 'reportFound' | 'confirmRecovery' | 'cancelListing' | 'rejectReport' | null
@@ -202,6 +229,181 @@ function onRejectReport() {
 function cancelAction() {
   cancelGate?.cancel()
 }
+
+// Hide (and stop polling) the moment this card is no longer eligible for
+// messaging -- e.g. the owner confirms recovery while the thread happens
+// to be open.
+watch(canMessageThread, (allowed) => {
+  if (!allowed) closeMessages()
+})
+
+const messagesOpen = ref(false)
+const messages = ref([])
+const messagesLoading = ref(false)
+const messagesError = ref('')
+// The signed read-authorization currently in use for polling. Cleared
+// once it goes stale (a poll gets rejected) so the UI can prompt to
+// re-sign rather than polling forever with a signature the backend will
+// keep rejecting.
+const readAuth = ref(null)
+
+const newMessageBody = ref('')
+const sendStatus = ref('idle') // idle | awaiting-signature | sending | error
+const sendError = ref('')
+
+let pollTimer = null
+let readCancelGate = null
+let sendCancelGate = null
+
+function shortenAddress(address) {
+  if (!address) return ''
+  return `${address.slice(0, 6)}...${address.slice(-4)}`
+}
+
+function isSelf(address) {
+  return Boolean(wallet.address) && address.toLowerCase() === wallet.address.toLowerCase()
+}
+
+function formatMessageTimestamp(unixSeconds) {
+  return new Date(unixSeconds * 1000).toLocaleString()
+}
+
+function stopPolling() {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+}
+
+function startPolling() {
+  stopPolling()
+  pollTimer = setInterval(async () => {
+    if (!readAuth.value) return
+    try {
+      messages.value = await fetchMessages(currentListing.value.id, readAuth.value)
+    } catch (err) {
+      // The signed read-authorization has likely gone stale (past the
+      // backend's freshness window). Stop polling and require an
+      // explicit re-sign rather than silently retrying forever or
+      // popping an unprompted wallet request.
+      stopPolling()
+      readAuth.value = null
+      messagesError.value =
+        err instanceof MessagingServiceError ? err.message : 'Failed to refresh messages.'
+    }
+  }, POLL_INTERVAL_MS)
+}
+
+async function loadMessages() {
+  messagesError.value = ''
+  messagesLoading.value = true
+  readCancelGate = createCancelGate()
+
+  try {
+    // toRaw() is required here, not cosmetic: wallet.contract is a Pinia
+    // ref, so accessing .runner off it returns a Vue-reactive Proxy of
+    // the real ethers Signer. ethers' Contract class avoids true private
+    // class fields specifically to stay Proxy-safe, but JsonRpcSigner and
+    // JsonRpcApiProvider (which BrowserProvider extends) do use real
+    // `#privateFields` (e.g. #notReady) -- calling a method through the
+    // reactive Proxy runs it with `this` set to the Proxy, and reading a
+    // private field then throws "Cannot read private member #notReady
+    // from an object whose class did not declare it" (confirmed via a
+    // minimal Vue reactive()-wrapped repro reproducing the exact error).
+    // Unwrapping back to the raw signer here sidesteps the whole issue.
+    const signer = toRaw(wallet.contract).runner
+    const signPromise = signReadAuthorization(signer, currentListing.value.id)
+    ignoreLateSettlement(signPromise)
+    readAuth.value = await Promise.race([signPromise, readCancelGate.promise])
+
+    messages.value = await fetchMessages(currentListing.value.id, readAuth.value)
+    startPolling()
+  } catch (err) {
+    if (err instanceof CancelledError) {
+      messagesOpen.value = false
+      return
+    }
+    messagesError.value =
+      err instanceof MessagingServiceError ? err.message : 'Failed to load messages.'
+  } finally {
+    messagesLoading.value = false
+    readCancelGate = null
+  }
+}
+
+function cancelLoadMessages() {
+  readCancelGate?.cancel()
+}
+
+function openMessages() {
+  messagesOpen.value = true
+  return loadMessages()
+}
+
+function closeMessages() {
+  messagesOpen.value = false
+  stopPolling()
+  readAuth.value = null
+}
+
+function toggleMessages() {
+  return messagesOpen.value ? closeMessages() : openMessages()
+}
+
+const isSendingMessage = computed(() =>
+  ['awaiting-signature', 'sending'].includes(sendStatus.value),
+)
+
+const sendButtonLabel = computed(() => {
+  switch (sendStatus.value) {
+    case 'awaiting-signature':
+      return SIGNING_LABEL
+    case 'sending':
+      return 'Sending...'
+    default:
+      return 'Send'
+  }
+})
+
+async function onSendMessage() {
+  const body = newMessageBody.value.trim()
+  if (!body) return
+
+  sendError.value = ''
+  sendCancelGate = createCancelGate()
+
+  try {
+    sendStatus.value = 'awaiting-signature'
+    // toRaw() is required here -- see loadMessages()'s identical line for why.
+    const signer = toRaw(wallet.contract).runner
+    const signPromise = signMessageBody(signer, { listingId: currentListing.value.id, body })
+    ignoreLateSettlement(signPromise)
+    const signed = await Promise.race([signPromise, sendCancelGate.promise])
+
+    sendStatus.value = 'sending'
+    const stored = await postMessage(currentListing.value.id, signed)
+
+    messages.value = [...messages.value, stored]
+    newMessageBody.value = ''
+    sendStatus.value = 'idle'
+  } catch (err) {
+    if (err instanceof CancelledError) {
+      sendStatus.value = 'idle'
+      return
+    }
+    sendStatus.value = 'error'
+    sendError.value =
+      err instanceof MessagingServiceError ? err.message : err?.message || 'Failed to send message.'
+  } finally {
+    sendCancelGate = null
+  }
+}
+
+function cancelSendMessage() {
+  sendCancelGate?.cancel()
+}
+
+onUnmounted(stopPolling)
 </script>
 
 <template>
@@ -287,6 +489,71 @@ function cancelAction() {
 
       <p v-if="actionError" class="action-error">{{ actionError }}</p>
       <p v-if="actionStatus === 'success'" class="action-success">{{ actionSuccessMessage }}</p>
+
+      <div v-if="canMessageThread" class="listing-action messages-section">
+        <button type="button" class="messages-toggle-button" @click="toggleMessages">
+          {{ messagesOpen ? 'Hide Messages' : 'Messages' }}
+        </button>
+
+        <div v-if="messagesOpen" class="messages-panel">
+          <template v-if="messagesLoading">
+            <p class="messages-status">
+              Waiting for you to confirm in your wallet to open the thread...
+            </p>
+            <button type="button" class="action-cancel-button" @click="cancelLoadMessages">
+              Cancel
+            </button>
+          </template>
+
+          <template v-else-if="messagesError">
+            <p class="action-error">{{ messagesError }}</p>
+            <button type="button" class="messages-retry-button" @click="loadMessages">
+              {{ readAuth ? 'Retry' : 'Resume' }}
+            </button>
+          </template>
+
+          <template v-else>
+            <ul class="message-list">
+              <li v-if="messages.length === 0" class="message-empty">No messages yet.</li>
+              <li v-for="message in messages" :key="message.id" class="message-item">
+                <div class="message-meta">
+                  <span class="message-sender">
+                    {{ shortenAddress(message.sender) }}{{ isSelf(message.sender) ? ' (you)' : '' }}
+                  </span>
+                  <span class="message-time">{{ formatMessageTimestamp(message.timestamp) }}</span>
+                </div>
+                <p class="message-body">{{ message.body }}</p>
+              </li>
+            </ul>
+
+            <form class="message-compose" @submit.prevent="onSendMessage">
+              <textarea
+                v-model="newMessageBody"
+                rows="2"
+                maxlength="2000"
+                placeholder="Write a message..."
+                :disabled="isSendingMessage"
+              />
+              <button
+                type="submit"
+                class="message-send-button"
+                :disabled="isSendingMessage || !newMessageBody.trim()"
+              >
+                {{ sendButtonLabel }}
+              </button>
+              <button
+                v-if="sendStatus === 'awaiting-signature'"
+                type="button"
+                class="action-cancel-button"
+                @click="cancelSendMessage"
+              >
+                Cancel
+              </button>
+            </form>
+            <p v-if="sendError" class="action-error">{{ sendError }}</p>
+          </template>
+        </div>
+      </div>
     </div>
   </article>
 </template>
@@ -443,5 +710,89 @@ function cancelAction() {
 .action-success {
   color: #1e7a34;
   font-size: 0.85rem;
+}
+
+.messages-toggle-button {
+  background: transparent;
+  border: 1px solid var(--color-border);
+  color: inherit;
+}
+
+.messages-panel {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.messages-status {
+  font-size: 0.85rem;
+  opacity: 0.8;
+}
+
+.messages-retry-button {
+  width: 100%;
+  background: transparent;
+  border: 1px solid var(--color-border);
+  color: inherit;
+}
+
+.message-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 12rem;
+  overflow-y: auto;
+}
+
+.message-empty {
+  font-size: 0.85rem;
+  opacity: 0.7;
+}
+
+.message-item {
+  padding: 0.4rem 0.5rem;
+  border-radius: 0.35rem;
+  background: var(--color-background-soft);
+}
+
+.message-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.7rem;
+  opacity: 0.7;
+}
+
+.message-body {
+  margin: 0.2rem 0 0;
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.message-compose {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.message-compose textarea {
+  resize: vertical;
+  font: inherit;
+  padding: 0.4rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.25rem;
+  background: var(--color-background);
+  color: inherit;
+}
+
+.message-send-button {
+  width: 100%;
 }
 </style>
