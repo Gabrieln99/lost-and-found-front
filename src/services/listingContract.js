@@ -12,7 +12,10 @@ export class ListingContractError extends Error {}
 // minutes and is intentionally not subject to this timeout.
 export const WALLET_RESPONSE_TIMEOUT_MS = 120_000
 
-function withWalletResponseTimeout(promise) {
+// Exported for reuse by other services that also trigger a wallet
+// signature prompt (e.g. messagingService.js's personal_sign calls) --
+// the "wallet never responds" failure mode applies equally there.
+export function withWalletResponseTimeout(promise) {
   let timer
   const timeout = new Promise((_, reject) => {
     timer = setTimeout(() => {
@@ -215,7 +218,11 @@ function extractListingId(contract, receipt) {
   return null
 }
 
-function describeContractError(err) {
+// Exported as a generic wallet-error describer (the name predates
+// non-contract callers) -- reused by messagingService.js for
+// signer.signMessage() rejections, which fail the exact same way a
+// contract call's signature request does.
+export function describeContractError(err) {
   if (err?.code === 'ACTION_REJECTED' || err?.info?.error?.code === 4001) {
     return 'Transaction was rejected in your wallet.'
   }
