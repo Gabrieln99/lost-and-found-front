@@ -1,50 +1,36 @@
-# lost-and-found-front
+# Lost and Found aplikacija — projekt README
 
-This template should help get you started developing with Vue 3 in Vite.
+Lost & Found je decentralizirana aplikacija za oglašavanje i pronalazak izgubljenih stvari. Vlasnik objavi što je izgubio i zaključa nagradu u pametnom ugovoru na blockchainu; novac automatski ode nalazniku tek kad vlasnik potvrdi da je stvar stvarno vratio, bez ikakvog posrednika koji uzima proviziju. Sustav je podijeljen na više neovisnih mikroservisa: frontend koji ovaj repozitorij sadrži (povezivanje s MetaMask walletom, objava i pregled oglasa, chat za dogovor primopredaje), storage servis (zaseban repozitorij lost-and-found-back, upravlja slikama i porukama), i sam pametni ugovor.
 
-## Recommended IDE Setup
+Projekt je izrađen u sklopu kolegija Raspodijeljeni sustavi i Blockchain aplikacije.
 
-[VS Code](https://code.visualstudio.com/) + [Vue (Official)](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
+## Live
 
-## Recommended Browser Setup
+- App: https://lost-and-found-rs-ba.netlify.app
+- Backend repository (contract + storage service): https://github.com/Gabrieln99/lost-and-found-back
+- Shared project docs: https://github.com/Gabrieln99/lost-and-found-project
 
-- Chromium-based browsers (Chrome, Edge, Brave, etc.):
-  - [Vue.js devtools](https://chromewebstore.google.com/detail/vuejs-devtools/nhdogjmejiglipccpnnnanhbledajbpd)
-  - [Turn on Custom Object Formatter in Chrome DevTools](http://bit.ly/object-formatters)
-- Firefox:
-  - [Vue.js devtools](https://addons.mozilla.org/en-US/firefox/addon/vue-js-devtools/)
-  - [Turn on Custom Object Formatter in Firefox DevTools](https://fxdx.dev/firefox-devtools-custom-object-formatters/)
+## Tech stack
 
-## Customize configuration
+Vue 3 (Composition API, `<script setup>`), Vite, Pinia, Vue Router, Tailwind CSS v4, ethers.js v6, VeeValidate. Tests: Vitest + Vue Test Utils. Lint: ESLint + oxlint.
 
-See [Vite Configuration Reference](https://vite.dev/config/).
+## Pages
 
-## Project Setup
+- `/` — landing page introducing the app and the escrow -> report -> confirm flow.
+- `/browse` — listing grid with a status filter and text search.
+- `/listing/:id` — single-listing detail page: image, status, description, reward, owner/finder addresses, the applicable action buttons, and the message thread.
+- `/create-listing` — form to publish a new listing (title, description, location, photo, reward, optional expiration).
+- `/profile` — connected wallet's own listings and found reports, plus its Sepolia balance and transaction history link.
 
-```sh
+## Setup
+
+```bash
 npm install
-```
-
-### Compile and Hot-Reload for Development
-
-```sh
-npm run dev
-```
-
-### Compile and Minify for Production
-
-```sh
+cp .env.example .env.local   # fill in VITE_CONTRACT_ADDRESS, VITE_STORAGE_SERVICE_URL
+npm run dev                  # http://localhost:5173
 npm run build
-```
-
-### Run Unit Tests with [Vitest](https://vitest.dev/)
-
-```sh
-npm run test:unit
-```
-
-### Lint with [ESLint](https://eslint.org/)
-
-```sh
+npm run test
 npm run lint
 ```
+
+`VITE_STORAGE_SERVICE_URL` should point at a locally running `lost-and-found-back/storage-service` (`http://localhost:8080`) or the deployed one (https://lost-and-found-storage.onrender.com). `VITE_CONTRACT_ADDRESS` is the deployed `LostAndFound` contract on Sepolia — see `lost-and-found-back/deployments/sepolia.json` for the current address.
