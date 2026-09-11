@@ -1,50 +1,37 @@
-# lost-and-found-front
+# Lost and Found aplikacija — projekt README
 
-This template should help get you started developing with Vue 3 in Vite.
+Lost & Found je decentralizirana aplikacija za oglašavanje i pronalazak izgubljenih stvari. Vlasnik objavi što je izgubio i zaključa nagradu u pametnom ugovoru na blockchainu; novac automatski ode nalazniku tek kad vlasnik potvrdi da je stvar stvarno vratio, bez ikakvog posrednika koji uzima proviziju. Sustav je podijeljen na više neovisnih mikroservisa: frontend koji ovaj repozitorij sadrži (povezivanje s MetaMask walletom, objava i pregled oglasa, chat za dogovor primopredaje), storage servis (zaseban repozitorij lost-and-found-back, upravlja slikama i porukama), i sam pametni ugovor.
 
-## Recommended IDE Setup
+Projekt je izrađen u sklopu kolegija Raspodijeljeni sustavi i Blockchain aplikacije.
 
-[VS Code](https://code.visualstudio.com/) + [Vue (Official)](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
+## Live
 
-## Recommended Browser Setup
+- App: https://lost-and-found-rs-ba.netlify.app
+- Backend repository (contract + storage service): https://github.com/Gabrieln99/lost-and-found-back
+- Shared project docs: https://github.com/Gabrieln99/lost-and-found-project
 
-- Chromium-based browsers (Chrome, Edge, Brave, etc.):
-  - [Vue.js devtools](https://chromewebstore.google.com/detail/vuejs-devtools/nhdogjmejiglipccpnnnanhbledajbpd)
-  - [Turn on Custom Object Formatter in Chrome DevTools](http://bit.ly/object-formatters)
-- Firefox:
-  - [Vue.js devtools](https://addons.mozilla.org/en-US/firefox/addon/vue-js-devtools/)
-  - [Turn on Custom Object Formatter in Firefox DevTools](https://fxdx.dev/firefox-devtools-custom-object-formatters/)
+## Tech stack
 
-## Customize configuration
+Vue 3 (Composition API, `<script setup>`), Vite, Pinia, Vue Router, Tailwind CSS v4, ethers.js v6, VeeValidate. Testovi: Vitest + Vue Test Utils. Lint: ESLint + oxlint.
 
-See [Vite Configuration Reference](https://vite.dev/config/).
+## Stranice
 
-## Project Setup
+- `/` — naslovna stranica, opis toka objava → prijava → potvrda.
+- `/browse` — pregled svih oglasa, filter po statusu i tekstualna pretraga.
+- `/listing/:id` — detalji jednog oglasa (slika, status, opis, nagrada, adrese vlasnika/nalaznika, akcije, chat).
+- `/create-listing` — forma za objavu novog oglasa.
+- `/profile` — vlastiti oglasi i prijave, Sepolia balans, link na povijest transakcija.
 
-```sh
+## Setup
+
+```bash
 npm install
-```
-
-### Compile and Hot-Reload for Development
-
-```sh
-npm run dev
-```
-
-### Compile and Minify for Production
-
-```sh
+cp .env.example .env.local   # VITE_CONTRACT_ADDRESS, VITE_STORAGE_SERVICE_URL
+npm run dev                  # http://localhost:5173
 npm run build
-```
-
-### Run Unit Tests with [Vitest](https://vitest.dev/)
-
-```sh
-npm run test:unit
-```
-
-### Lint with [ESLint](https://eslint.org/)
-
-```sh
+npm run test
 npm run lint
 ```
+
+`VITE_STORAGE_SERVICE_URL` — lokalno `http://localhost:8080`, ili deployani servis: https://lost-and-found-storage.onrender.com
+`VITE_CONTRACT_ADDRESS` — deployana adresa u `lost-and-found-back/deployments/sepolia.json`.
