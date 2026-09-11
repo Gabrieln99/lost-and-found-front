@@ -12,25 +12,26 @@ Projekt je izrađen u sklopu kolegija Raspodijeljeni sustavi i Blockchain aplika
 
 ## Tech stack
 
-Vue 3 (Composition API, `<script setup>`), Vite, Pinia, Vue Router, Tailwind CSS v4, ethers.js v6, VeeValidate. Tests: Vitest + Vue Test Utils. Lint: ESLint + oxlint.
+Vue 3 (Composition API, `<script setup>`), Vite, Pinia, Vue Router, Tailwind CSS v4, ethers.js v6, VeeValidate. Testovi: Vitest + Vue Test Utils. Lint: ESLint + oxlint.
 
-## Pages
+## Stranice
 
-- `/` — landing page introducing the app and the escrow -> report -> confirm flow.
-- `/browse` — listing grid with a status filter and text search.
-- `/listing/:id` — single-listing detail page: image, status, description, reward, owner/finder addresses, the applicable action buttons, and the message thread.
-- `/create-listing` — form to publish a new listing (title, description, location, photo, reward, optional expiration).
-- `/profile` — connected wallet's own listings and found reports, plus its Sepolia balance and transaction history link.
+- `/` — naslovna stranica, opis toka objava → prijava → potvrda.
+- `/browse` — pregled svih oglasa, filter po statusu i tekstualna pretraga.
+- `/listing/:id` — detalji jednog oglasa (slika, status, opis, nagrada, adrese vlasnika/nalaznika, akcije, chat).
+- `/create-listing` — forma za objavu novog oglasa.
+- `/profile` — vlastiti oglasi i prijave, Sepolia balans, link na povijest transakcija.
 
 ## Setup
 
 ```bash
 npm install
-cp .env.example .env.local   # fill in VITE_CONTRACT_ADDRESS, VITE_STORAGE_SERVICE_URL
+cp .env.example .env.local   # VITE_CONTRACT_ADDRESS, VITE_STORAGE_SERVICE_URL
 npm run dev                  # http://localhost:5173
 npm run build
 npm run test
 npm run lint
 ```
 
-`VITE_STORAGE_SERVICE_URL` should point at a locally running `lost-and-found-back/storage-service` (`http://localhost:8080`) or the deployed one (https://lost-and-found-storage.onrender.com). `VITE_CONTRACT_ADDRESS` is the deployed `LostAndFound` contract on Sepolia — see `lost-and-found-back/deployments/sepolia.json` for the current address.
+`VITE_STORAGE_SERVICE_URL` — lokalno `http://localhost:8080`, ili deployani servis: https://lost-and-found-storage.onrender.com
+`VITE_CONTRACT_ADDRESS` — deployana adresa u `lost-and-found-back/deployments/sepolia.json`.
