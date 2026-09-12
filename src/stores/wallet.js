@@ -14,11 +14,27 @@ function hasInjectedWallet() {
   return typeof window !== 'undefined' && Boolean(window.ethereum)
 }
 
-function isUserRejection(err) {
-  return (
+function isUserRejection(err, expectedMethod) {
+  if (
     err?.code === 4001 ||
     err?.code === 'ACTION_REJECTED' ||
-    err?.info?.error?.code === 4001
+    err?.info?.error?.code === 4001 ||
+    err?.error?.code === 4001
+  ) {
+    return true
+  }
+
+  // MetaMask sometimes reports a cancelled request as a generic -32603
+  // "internal error" instead of the standard 4001 user-rejected code.
+  // ethers' BrowserProvider.send() re-wraps that raw error at `err.error`
+  // (see ethers' "could not coalesce error" path), which the checks above
+  // don't cover. Only treat that ambiguous shape as a rejection for the
+  // specific request it's known to affect, so a genuine internal RPC
+  // failure on a different call isn't misreported as "cancelled".
+  return (
+    Boolean(expectedMethod) &&
+    err?.error?.code === -32603 &&
+    err?.payload?.method === expectedMethod
   )
 }
 
@@ -131,7 +147,7 @@ export const useWalletStore = defineStore('wallet', () => {
       attachListeners()
     } catch (err) {
       resetState()
-      if (isUserRejection(err)) {
+      if (isUserRejection(err, 'eth_requestAccounts')) {
         error.value = { code: 'REJECTED', message: 'Connection request was rejected.' }
       } else {
         error.value = { code: 'UNKNOWN', message: err?.message || 'Failed to connect wallet.' }
@@ -164,9 +180,11 @@ export const useWalletStore = defineStore('wallet', () => {
             params: [SEPOLIA_NETWORK_PARAMS],
           })
         } catch (addError) {
-          error.value = {
-            code: 'UNKNOWN',
-            message: addError?.message || 'Failed to add Sepolia network.',
+          if (!isUserRejection(addError)) {
+            error.value = {
+              code: 'UNKNOWN',
+              message: addError?.message || 'Failed to add Sepolia network.',
+            }
           }
         }
       } else if (!isUserRejection(switchError)) {

@@ -64,7 +64,10 @@ function installEthereumMock(overrides = {}) {
         if (overrides.switchError) throw overrides.switchError
         return null
       }
-      if (method === 'wallet_addEthereumChain') return null
+      if (method === 'wallet_addEthereumChain') {
+        if (overrides.addError) throw overrides.addError
+        return null
+      }
       return null
     }),
     on: vi.fn((event, handler) => {
@@ -126,6 +129,22 @@ describe('wallet store', () => {
     expect(store.isConnected).toBe(false)
   })
 
+  it('sets a REJECTED error when MetaMask reports the cancelled connection as an internal -32603 error', async () => {
+    installEthereumMock()
+    providerState.sendError = {
+      code: 'UNKNOWN_ERROR',
+      error: { code: -32603, message: 'An internal error has occurred' },
+      payload: { method: 'eth_requestAccounts', params: [] },
+      message:
+        'could not coalesce error (error={ "code": -32603, "message": "An internal error has occurred" }, payload={ "id": 2, "jsonrpc": "2.0", "method": "eth_requestAccounts", "params": [] }, code=UNKNOWN_ERROR, version=6.17.0)',
+    }
+    const store = useWalletStore()
+    await store.connect()
+    expect(store.error?.code).toBe('REJECTED')
+    expect(store.error?.message).toBe('Connection request was rejected.')
+    expect(store.isConnected).toBe(false)
+  })
+
   it('resets state on disconnect', async () => {
     installEthereumMock()
     const store = useWalletStore()
@@ -162,5 +181,18 @@ describe('wallet store', () => {
     expect(ethereum.request).toHaveBeenCalledWith(
       expect.objectContaining({ method: 'wallet_addEthereumChain' }),
     )
+  })
+
+  it('does not set an error when the user rejects the wallet_addEthereumChain prompt', async () => {
+    const ethereum = installEthereumMock({
+      switchError: { code: 4902 },
+      addError: { code: 4001, message: 'User rejected the request.' },
+    })
+    const store = useWalletStore()
+    await store.switchToSepolia()
+    expect(ethereum.request).toHaveBeenCalledWith(
+      expect.objectContaining({ method: 'wallet_addEthereumChain' }),
+    )
+    expect(store.error).toBeNull()
   })
 })
