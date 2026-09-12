@@ -6,6 +6,7 @@ const { providerState, FakeBrowserProvider, FakeContract } = vi.hoisted(() => {
     chainId: 11155111n,
     address: '0xABCDEF0123456789ABCDEF0123456789ABCDEF01',
     sendError: null,
+    sendCallCount: 0,
   }
 
   class FakeSigner {
@@ -20,6 +21,7 @@ const { providerState, FakeBrowserProvider, FakeContract } = vi.hoisted(() => {
     }
 
     async send(method) {
+      providerState.sendCallCount += 1
       if (providerState.sendError) {
         const err = providerState.sendError
         providerState.sendError = null
@@ -87,6 +89,7 @@ describe('wallet store', () => {
     setActivePinia(createPinia())
     providerState.chainId = 11155111n
     providerState.sendError = null
+    providerState.sendCallCount = 0
     delete window.ethereum
   })
 
@@ -143,6 +146,42 @@ describe('wallet store', () => {
     expect(store.error?.code).toBe('REJECTED')
     expect(store.error?.message).toBe('Connection request was rejected.')
     expect(store.isConnected).toBe(false)
+  })
+
+  it('sets a distinct PENDING_REQUEST error when a request is already pending (-32002)', async () => {
+    installEthereumMock()
+    providerState.sendError = {
+      code: 'UNKNOWN_ERROR',
+      error: {
+        code: -32002,
+        message:
+          "Request of type 'wallet_requestPermissions' already pending for origin http://localhost:5173. Please wait.",
+      },
+      payload: { method: 'eth_requestAccounts', params: [] },
+      message:
+        'could not coalesce error (error={ "code": -32002, "message": "Request of type \'wallet_requestPermissions\' already pending for origin http://localhost:5173. Please wait." }, payload={ "id": 2, "jsonrpc": "2.0", "method": "eth_requestAccounts", "params": [] }, code=UNKNOWN_ERROR, version=6.17.0)',
+    }
+    const store = useWalletStore()
+    await store.connect()
+    expect(store.error?.code).toBe('PENDING_REQUEST')
+    expect(store.error?.message).toBe(
+      'A connection request is already open — check MetaMask and approve or dismiss it, then try again.',
+    )
+    expect(store.isConnected).toBe(false)
+  })
+
+  it('ignores a second connect() call while one is already in flight', async () => {
+    installEthereumMock()
+    const store = useWalletStore()
+
+    const first = store.connect()
+    expect(store.isConnecting).toBe(true)
+    const second = store.connect()
+    await Promise.all([first, second])
+
+    expect(providerState.sendCallCount).toBe(1)
+    expect(store.isConnected).toBe(true)
+    expect(store.isConnecting).toBe(false)
   })
 
   it('resets state on disconnect', async () => {

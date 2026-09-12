@@ -38,6 +38,18 @@ function isUserRejection(err, expectedMethod) {
   )
 }
 
+// -32002 means MetaMask already has a matching request pending (e.g. a
+// stuck eth_requestAccounts prompt from an earlier click) and refused to
+// open a second one — not a rejection, just "try again later".
+function isPendingRequestError(err, expectedMethod) {
+  if (err?.code === -32002) return true
+  return (
+    Boolean(expectedMethod) &&
+    err?.error?.code === -32002 &&
+    err?.payload?.method === expectedMethod
+  )
+}
+
 export const useWalletStore = defineStore('wallet', () => {
   const address = ref(null)
   const chainId = ref(null)
@@ -129,6 +141,12 @@ export const useWalletStore = defineStore('wallet', () => {
   // User-initiated connect — triggers the MetaMask popup if not already
   // authorized.
   async function connect() {
+    // Re-entrancy guard: without this, a second call while eth_requestAccounts
+    // is already in flight (a stray extra call site, or a rapid click landing
+    // before the UI's `disabled` binding re-renders) fires a second request
+    // MetaMask rejects with a stuck-looking -32002 error.
+    if (isConnecting.value) return
+
     error.value = null
 
     if (!hasInjectedWallet()) {
@@ -149,6 +167,12 @@ export const useWalletStore = defineStore('wallet', () => {
       resetState()
       if (isUserRejection(err, 'eth_requestAccounts')) {
         error.value = { code: 'REJECTED', message: 'Connection request was rejected.' }
+      } else if (isPendingRequestError(err, 'eth_requestAccounts')) {
+        error.value = {
+          code: 'PENDING_REQUEST',
+          message:
+            'A connection request is already open — check MetaMask and approve or dismiss it, then try again.',
+        }
       } else {
         error.value = { code: 'UNKNOWN', message: err?.message || 'Failed to connect wallet.' }
       }
