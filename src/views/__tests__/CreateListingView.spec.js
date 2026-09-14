@@ -358,4 +358,166 @@ describe('CreateListingView', () => {
     expect(wrapper.text()).toContain('Expiration must be in the future.')
     expect(sendCreateListingTx).not.toHaveBeenCalled()
   })
+
+  it('shows a drag-active style while a file is dragged over the dropzone', async () => {
+    const wrapper = mount(CreateListingView)
+    const dropzone = wrapper.find('.dropzone')
+
+    expect(dropzone.classes()).not.toContain('border-brand')
+
+    await dropzone.trigger('dragover')
+    expect(dropzone.classes()).toContain('border-brand')
+
+    await dropzone.trigger('dragleave')
+    expect(dropzone.classes()).not.toContain('border-brand')
+  })
+
+  it('accepts a dropped image file and shows a thumbnail preview', async () => {
+    const wrapper = mount(CreateListingView)
+    const dropzone = wrapper.find('.dropzone')
+    const file = new File(['fake-image-bytes'], 'cat.png', { type: 'image/png' })
+
+    await dropzone.trigger('dragover')
+    await dropzone.trigger('drop', { dataTransfer: { files: [file] } })
+
+    // The drop itself clears the drag-active style regardless of validity.
+    expect(dropzone.classes()).not.toContain('border-brand')
+    expect(wrapper.find('img[alt="Selected photo preview"]').exists()).toBe(true)
+    expect(wrapper.find('.field-error').exists()).toBe(false)
+  })
+
+  it('rejects a dropped non-image file with the same validation as the file input', async () => {
+    const wrapper = mount(CreateListingView)
+    const dropzone = wrapper.find('.dropzone')
+    const file = new File(['not an image'], 'notes.txt', { type: 'text/plain' })
+
+    await dropzone.trigger('drop', { dataTransfer: { files: [file] } })
+
+    expect(wrapper.text()).toContain('Please select an image file.')
+    expect(wrapper.find('img[alt="Selected photo preview"]').exists()).toBe(false)
+  })
+
+  it('rejects an oversized dropped file', async () => {
+    const wrapper = mount(CreateListingView)
+    const dropzone = wrapper.find('.dropzone')
+    const file = new File(['x'], 'huge.png', { type: 'image/png' })
+    Object.defineProperty(file, 'size', { value: 11 * 1024 * 1024 })
+
+    await dropzone.trigger('drop', { dataTransfer: { files: [file] } })
+
+    expect(wrapper.text()).toContain('Image must be 10 MB or smaller.')
+  })
+
+  it('is exposed as a keyboard-focusable button for assistive tech', () => {
+    const wrapper = mount(CreateListingView)
+    const dropzone = wrapper.find('.dropzone')
+
+    expect(dropzone.attributes('role')).toBe('button')
+    expect(dropzone.attributes('tabindex')).toBe('0')
+  })
+
+  it('clicking the dropzone opens the native (hidden) file picker', async () => {
+    const clickSpy = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {})
+    const wrapper = mount(CreateListingView)
+
+    expect(wrapper.find('#image').classes()).toContain('hidden')
+
+    await wrapper.find('.dropzone').trigger('click')
+
+    expect(clickSpy).toHaveBeenCalledTimes(1)
+    clickSpy.mockRestore()
+  })
+
+  it('pressing Enter or Space on the dropzone also opens the native file picker', async () => {
+    const clickSpy = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {})
+    const wrapper = mount(CreateListingView)
+    const dropzone = wrapper.find('.dropzone')
+
+    await dropzone.trigger('keydown', { key: 'Enter' })
+    await dropzone.trigger('keydown', { key: ' ' })
+
+    expect(clickSpy).toHaveBeenCalledTimes(2)
+    clickSpy.mockRestore()
+  })
+
+  it('revokes the previous preview object URL when the image changes, and again on unmount', async () => {
+    const revokeSpy = vi.spyOn(URL, 'revokeObjectURL')
+    const wrapper = mount(CreateListingView)
+    const dropzone = wrapper.find('.dropzone')
+
+    const file1 = new File(['a'], 'a.png', { type: 'image/png' })
+    const file2 = new File(['b'], 'b.png', { type: 'image/png' })
+
+    await dropzone.trigger('drop', { dataTransfer: { files: [file1] } })
+    await dropzone.trigger('drop', { dataTransfer: { files: [file2] } })
+    expect(revokeSpy).toHaveBeenCalledTimes(1)
+
+    wrapper.unmount()
+    expect(revokeSpy).toHaveBeenCalledTimes(2)
+
+    revokeSpy.mockRestore()
+  })
+
+  it('clears the selected image and shows the empty dropzone again when the remove button is clicked', async () => {
+    const clickSpy = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {})
+    const wrapper = mount(CreateListingView)
+    const dropzone = wrapper.find('.dropzone')
+    const file = new File(['fake-image-bytes'], 'cat.png', { type: 'image/png' })
+
+    await dropzone.trigger('drop', { dataTransfer: { files: [file] } })
+    expect(wrapper.find('img[alt="Selected photo preview"]').exists()).toBe(true)
+
+    await wrapper.find('.remove-image-button').trigger('click')
+
+    expect(wrapper.find('img[alt="Selected photo preview"]').exists()).toBe(false)
+    expect(wrapper.text()).toContain('Drag a photo here, or click to browse')
+    // Removing must not re-trigger the file picker (the button sits inside
+    // the same clickable dropzone).
+    expect(clickSpy).not.toHaveBeenCalled()
+    clickSpy.mockRestore()
+  })
+
+  it('resets validation state on remove, same as if nothing had ever been selected', async () => {
+    const wrapper = mount(CreateListingView)
+    const dropzone = wrapper.find('.dropzone')
+    const file = new File(['fake-image-bytes'], 'cat.png', { type: 'image/png' })
+
+    await dropzone.trigger('drop', { dataTransfer: { files: [file] } })
+    await wrapper.find('.remove-image-button').trigger('click')
+
+    await wrapper.find('#title').setValue('Lost cat')
+    await wrapper.find('#description').setValue('Lost cat, orange tabby')
+    await wrapper.find('#location').setValue('Central Park')
+    await wrapper.find('#reward').setValue('0.05')
+    await submitAndSettle(wrapper)
+
+    expect(wrapper.text()).toContain('Please select an image.')
+    expect(sendCreateListingTx).not.toHaveBeenCalled()
+  })
+
+  it('revokes the thumbnail object URL when the image is removed', async () => {
+    const revokeSpy = vi.spyOn(URL, 'revokeObjectURL')
+    const wrapper = mount(CreateListingView)
+    const dropzone = wrapper.find('.dropzone')
+    const file = new File(['fake-image-bytes'], 'cat.png', { type: 'image/png' })
+
+    await dropzone.trigger('drop', { dataTransfer: { files: [file] } })
+    await wrapper.find('.remove-image-button').trigger('click')
+
+    expect(revokeSpy).toHaveBeenCalledTimes(1)
+    revokeSpy.mockRestore()
+  })
+
+  it('does not reopen the file picker when Enter/Space is pressed on the remove button', async () => {
+    const clickSpy = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {})
+    const wrapper = mount(CreateListingView)
+    const dropzone = wrapper.find('.dropzone')
+    const file = new File(['fake-image-bytes'], 'cat.png', { type: 'image/png' })
+
+    await dropzone.trigger('drop', { dataTransfer: { files: [file] } })
+    await wrapper.find('.remove-image-button').trigger('keydown', { key: 'Enter' })
+
+    expect(clickSpy).not.toHaveBeenCalled()
+    clickSpy.mockRestore()
+  })
 })
