@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, nextTick } from 'vue'
+import { ref, computed, watch, nextTick, onUnmounted } from 'vue'
 import { useForm, useField } from 'vee-validate'
 import { parseEther } from 'ethers'
 import { VueDatePicker } from '@vuepic/vue-datepicker'
@@ -78,9 +78,11 @@ const { value: expirationDate, errorMessage: expirationDateError } = useField('e
 
 const imageFile = ref(null)
 const imageError = ref('')
+const imagePreviewUrl = ref(null)
+const isDragActive = ref(false)
+const fileInputRef = ref(null)
 
-function onImageChange(event) {
-  const file = event.target.files?.[0] ?? null
+function validateAndSetImage(file) {
   imageError.value = ''
 
   if (!file) {
@@ -99,6 +101,47 @@ function onImageChange(event) {
   }
   imageFile.value = file
 }
+
+function onImageChange(event) {
+  validateAndSetImage(event.target.files?.[0] ?? null)
+}
+
+function onImageDrop(event) {
+  isDragActive.value = false
+  validateAndSetImage(event.dataTransfer?.files?.[0] ?? null)
+}
+
+function browseForImage() {
+  fileInputRef.value?.click()
+}
+
+function removeSelectedImage() {
+  validateAndSetImage(null)
+  // Clears the native input's own record of the file so re-selecting the
+  // exact same file afterwards still fires a change event.
+  if (fileInputRef.value) {
+    fileInputRef.value.value = ''
+  }
+}
+
+// Revoke the previous object URL whenever the selected file changes (or is
+// cleared) so we don't leak one every time a new photo is picked, and again
+// on unmount for whichever URL is still outstanding at that point.
+watch(imageFile, (file) => {
+  if (imagePreviewUrl.value) {
+    URL.revokeObjectURL(imagePreviewUrl.value)
+    imagePreviewUrl.value = null
+  }
+  if (file) {
+    imagePreviewUrl.value = URL.createObjectURL(file)
+  }
+})
+
+onUnmounted(() => {
+  if (imagePreviewUrl.value) {
+    URL.revokeObjectURL(imagePreviewUrl.value)
+  }
+})
 
 const status = ref('idle')
 const submitError = ref('')
@@ -235,7 +278,44 @@ function cancelSubmit() {
       </FormField>
 
       <FormField label="Photo" field-id="image" :error="imageError">
-        <input id="image" type="file" accept="image/*" @change="onImageChange" />
+        <input
+          id="image"
+          ref="fileInputRef"
+          type="file"
+          accept="image/*"
+          class="hidden"
+          @change="onImageChange"
+        />
+        <div
+          class="dropzone relative flex flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed border-border p-6 text-center text-sm text-muted cursor-pointer"
+          :class="{ 'border-brand bg-info-soft': isDragActive }"
+          role="button"
+          tabindex="0"
+          @click="browseForImage"
+          @keydown.enter.prevent="browseForImage"
+          @keydown.space.prevent="browseForImage"
+          @dragover.prevent="isDragActive = true"
+          @dragleave.prevent="isDragActive = false"
+          @drop.prevent="onImageDrop"
+        >
+          <button
+            v-if="imagePreviewUrl"
+            type="button"
+            class="remove-image-button absolute top-2 right-2 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full bg-danger text-white shadow"
+            aria-label="Remove selected photo"
+            @click.stop="removeSelectedImage"
+            @keydown.stop
+          >
+            &times;
+          </button>
+          <img
+            v-if="imagePreviewUrl"
+            :src="imagePreviewUrl"
+            alt="Selected photo preview"
+            class="aspect-[4/3] w-full max-w-56 rounded-md object-cover"
+          />
+          <p v-else>Drag a photo here, or click to browse</p>
+        </div>
       </FormField>
 
       <FormField label="Reward (ETH)" field-id="reward" :error="rewardError">
