@@ -114,3 +114,27 @@
     @apply text-muted;
   }
 }
+
+/* Theme @vuepic/vue-datepicker to match the Civic slate palette instead of
+   its own default look. Not inside @theme -- these are the library's own
+   CSS variables, not Tailwind token names to generate utilities from. */
+:root {
+  --dp-primary-color: var(--color-brand);
+  --dp-primary-text-color: #ffffff;
+  --dp-primary-disabled-color: var(--color-brand-hover);
+  --dp-border-color: var(--color-border);
+  --dp-border-color-hover: var(--color-brand);
+  --dp-border-color-focus: var(--color-brand);
+  --dp-menu-border-color: var(--color-border);
+  --dp-background-color: var(--color-surface);
+  --dp-text-color: var(--color-body);
+  --dp-hover-color: var(--color-surface-soft);
+  --dp-hover-text-color: var(--color-body);
+  --dp-hover-icon-color: var(--color-brand);
+  --dp-secondary-color: var(--color-muted);
+  --dp-icon-color: var(--color-muted);
+  --dp-danger-color: var(--color-danger);
+  --dp-highlight-color: var(--color-info-soft);
+  --dp-border-radius: 0.375rem;
+  --dp-font-family: inherit;
+}
