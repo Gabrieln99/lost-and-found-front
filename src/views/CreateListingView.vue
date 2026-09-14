@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import { useForm, useField } from 'vee-validate'
 import { parseEther } from 'ethers'
 import { useWalletStore } from '@/stores/wallet'
@@ -55,6 +55,22 @@ const { handleSubmit, resetForm } = useForm({ validationSchema })
 
 const { value: title, errorMessage: titleError } = useField('title')
 const { value: description, errorMessage: descriptionError } = useField('description')
+
+const DESCRIPTION_MAX_LENGTH = 500
+const DESCRIPTION_MAX_HEIGHT_PX = 256 // 16rem -- scrolls internally past this
+
+const descriptionTextareaRef = ref(null)
+
+function resizeDescriptionTextarea() {
+  const el = descriptionTextareaRef.value
+  if (!el) return
+  el.style.height = 'auto'
+  el.style.height = `${Math.min(el.scrollHeight, DESCRIPTION_MAX_HEIGHT_PX)}px`
+}
+
+// Covers typing, paste, and the field resetting after a successful submit --
+// anything that changes the bound value, not just direct keystrokes.
+watch(description, () => nextTick(resizeDescriptionTextarea))
 const { value: location, errorMessage: locationError } = useField('location')
 const { value: reward, errorMessage: rewardError } = useField('reward')
 const { value: expirationDate, errorMessage: expirationDateError } = useField('expirationDate')
@@ -185,7 +201,7 @@ function cancelSubmit() {
 </script>
 
 <template>
-  <div class="mx-auto flex max-w-xl flex-col gap-6">
+  <div class="mx-auto flex max-w-xl flex-col gap-6 rounded-lg bg-gradient-to-b from-[#eef3fc] to-white p-6">
     <div class="flex flex-col gap-1">
       <h1 class="text-2xl font-bold tracking-tight">Publish a lost-item listing</h1>
       <p class="text-sm text-muted">
@@ -199,7 +215,18 @@ function cancelSubmit() {
       </FormField>
 
       <FormField label="Description" field-id="description" :error="descriptionError">
-        <textarea id="description" v-model="description" rows="3" maxlength="500" />
+        <textarea
+          id="description"
+          ref="descriptionTextareaRef"
+          v-model="description"
+          rows="3"
+          :maxlength="DESCRIPTION_MAX_LENGTH"
+          class="resize-none overflow-y-auto"
+          style="max-height: 16rem"
+        />
+        <p class="text-right text-xs text-muted">
+          {{ (description || '').length }} / {{ DESCRIPTION_MAX_LENGTH }}
+        </p>
       </FormField>
 
       <FormField label="Location lost" field-id="location" :error="locationError">
@@ -211,7 +238,14 @@ function cancelSubmit() {
       </FormField>
 
       <FormField label="Reward (ETH)" field-id="reward" :error="rewardError">
-        <input id="reward" v-model="reward" type="number" step="any" min="0" />
+        <input
+          id="reward"
+          v-model="reward"
+          type="number"
+          step="any"
+          min="0"
+          @wheel="($event) => $event.target.blur()"
+        />
       </FormField>
 
       <FormField label="Expires (optional)" field-id="expirationDate" :error="expirationDateError">
