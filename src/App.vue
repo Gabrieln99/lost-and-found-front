@@ -2,6 +2,7 @@
 import { onMounted } from 'vue'
 import { RouterLink, RouterView } from 'vue-router'
 import ConnectWallet from './components/ConnectWallet.vue'
+import ToastContainer from '@/components/ui/ToastContainer.vue'
 import { useWalletStore } from '@/stores/wallet'
 
 const wallet = useWalletStore()
@@ -36,6 +37,8 @@ onMounted(() => {
   <main class="mx-auto max-w-5xl px-4 py-8">
     <RouterView />
   </main>
+
+  <ToastContainer />
 </template>
 
 <style scoped>

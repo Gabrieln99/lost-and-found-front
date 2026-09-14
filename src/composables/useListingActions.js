@@ -13,6 +13,7 @@ import {
 } from '@/services/listingContract'
 import { createCancelGate, ignoreLateSettlement, CancelledError } from '@/utils/cancelGate'
 import { WALLET_SIGNING_LABEL } from '@/utils/walletLabels'
+import { useToasts } from '@/composables/useToasts'
 
 // One entry per listing action. A single generic runAction() drives all
 // four buttons through the identical awaiting-signature ->
@@ -87,6 +88,7 @@ const ACTION_CONFIG = {
  */
 export function useListingActions(sourceListingGetter) {
   const wallet = useWalletStore()
+  const { pushToast } = useToasts()
 
   // Local, updatable copy of the listing. Null-safe seed so a detail view
   // can call this before its listing has loaded.
@@ -197,6 +199,7 @@ export function useListingActions(sourceListingGetter) {
       currentListing.value = await fetchListing(wallet.contract, currentListing.value.id)
       actionStatus.value = 'success'
       actionSuccessMessage.value = config.successMessage
+      pushToast({ tone: 'success', message: config.successMessage })
     } catch (err) {
       if (err instanceof CancelledError) {
         actionStatus.value = 'idle'
@@ -206,6 +209,7 @@ export function useListingActions(sourceListingGetter) {
       actionStatus.value = 'error'
       actionError.value =
         err instanceof ListingContractError ? err.message : err?.message || 'Action failed.'
+      pushToast({ tone: 'danger', message: actionError.value })
     } finally {
       cancelGate = null
     }

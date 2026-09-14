@@ -16,6 +16,7 @@ vi.mock('@/services/listingContract', () => ({
 import CreateListingView from '../CreateListingView.vue'
 import { VueDatePicker } from '@vuepic/vue-datepicker'
 import { useWalletStore } from '@/stores/wallet'
+import { useToasts } from '@/composables/useToasts'
 import { uploadListingMetadata, StorageServiceError } from '@/services/storageService'
 import {
   sendCreateListingTx,
@@ -61,6 +62,7 @@ describe('CreateListingView', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
+    useToasts().toasts.value.splice(0)
   })
 
   it('shows a hint instead of letting you submit when the wallet is not connected', () => {
@@ -129,6 +131,11 @@ describe('CreateListingView', () => {
     expect(waitForListingReceipt).toHaveBeenCalledWith(store.contract, fakeTx)
     expect(wrapper.text()).toContain('Listing published!')
     expect(wrapper.text()).toContain('0xabc')
+
+    const { toasts } = useToasts()
+    expect(toasts.value).toContainEqual(
+      expect.objectContaining({ tone: 'success', message: 'Listing published!' }),
+    )
   })
 
   it('shows an error and does not call the contract when the upload fails', async () => {

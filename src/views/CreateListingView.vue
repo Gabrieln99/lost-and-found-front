@@ -11,6 +11,7 @@ import {
   ListingContractError,
 } from '@/services/listingContract'
 import { createCancelGate, ignoreLateSettlement, CancelledError } from '@/utils/cancelGate'
+import { useToasts } from '@/composables/useToasts'
 import Button from '@/components/ui/Button.vue'
 import Alert from '@/components/ui/Alert.vue'
 import FormField from '@/components/ui/FormField.vue'
@@ -20,6 +21,7 @@ import FormField from '@/components/ui/FormField.vue'
 const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024
 
 const wallet = useWalletStore()
+const { pushToast } = useToasts()
 
 const validationSchema = {
   title(value) {
@@ -221,6 +223,7 @@ const onSubmit = handleSubmit(async (values) => {
 
     result.value = { listingId, transactionHash }
     status.value = 'success'
+    pushToast({ tone: 'success', message: 'Listing published!' })
     resetForm()
     imageFile.value = null
   } catch (err) {
