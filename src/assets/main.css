@@ -85,6 +85,22 @@
     @apply focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand;
   }
 
+  select {
+    @apply cursor-pointer;
+  }
+
+  /* Hide the number-input spinner arrows (e.g. the Reward field) -- still
+     typeable, just no up/down buttons cluttering the control. */
+  input[type='number']::-webkit-outer-spin-button,
+  input[type='number']::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  input[type='number'] {
+    -moz-appearance: textfield;
+  }
+
   /* File inputs get a visible container + a styled "Choose file" button so
      the upload area reads as clickable (the bare control is nearly
      invisible against the page). */

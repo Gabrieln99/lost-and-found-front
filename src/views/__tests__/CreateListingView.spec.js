@@ -266,4 +266,37 @@ describe('CreateListingView', () => {
     // Cancelling isn't an error -- no error message should appear.
     expect(wrapper.find('.submit-error').exists()).toBe(false)
   })
+
+  it('blurs the reward field on wheel so scrolling the page cannot change its value', async () => {
+    const wrapper = mount(CreateListingView, { attachTo: document.body })
+    const reward = wrapper.find('#reward')
+
+    reward.element.focus()
+    expect(document.activeElement).toBe(reward.element)
+
+    await reward.trigger('wheel')
+
+    expect(document.activeElement).not.toBe(reward.element)
+    wrapper.unmount()
+  })
+
+  it('shows a live character counter for the description field', async () => {
+    const wrapper = mount(CreateListingView)
+
+    expect(wrapper.text()).toContain('0 / 500')
+
+    await wrapper.find('#description').setValue('Lost cat, orange tabby')
+
+    expect(wrapper.text()).toContain('22 / 500')
+  })
+
+  it('caps the description field at 500 characters via maxlength', () => {
+    const wrapper = mount(CreateListingView)
+    expect(wrapper.find('#description').attributes('maxlength')).toBe('500')
+  })
+
+  it('gives the description textarea no manual resize handle', () => {
+    const wrapper = mount(CreateListingView)
+    expect(wrapper.find('#description').classes()).toContain('resize-none')
+  })
 })

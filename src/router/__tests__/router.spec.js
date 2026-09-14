@@ -13,4 +13,21 @@ describe('router', () => {
     expect(router.resolve('/create-listing').name).toBe('create-listing')
     expect(router.resolve('/profile').name).toBe('profile')
   })
+
+  it('sets document.title per route via meta.title', async () => {
+    await router.push('/browse')
+    expect(document.title).toBe('Lost & Found - Browse')
+
+    await router.push('/create-listing')
+    expect(document.title).toBe('Lost & Found - Publish')
+
+    await router.push('/profile')
+    expect(document.title).toBe('Lost & Found - My Profile')
+
+    await router.push('/listing/5')
+    expect(document.title).toBe('Lost & Found - Listing')
+
+    await router.push('/')
+    expect(document.title).toBe('Lost & Found')
+  })
 })
