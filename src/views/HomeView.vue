@@ -1,23 +1,31 @@
 <script setup>
 import { RouterLink } from 'vue-router'
 import Button from '@/components/ui/Button.vue'
+import publishLockIcon from '@/assets/icons/01-publish-lock.svg'
+import reportFindIcon from '@/assets/icons/02-report-find.svg'
+import coordinateIcon from '@/assets/icons/03-coordinate.svg'
+import confirmReleaseIcon from '@/assets/icons/04-confirm-release.svg'
 
 const steps = [
   {
     title: 'Publish & lock the reward',
     body: 'Post what you lost and lock the ETH reward in the smart contract. It stays in escrow — no platform fee, no middleman.',
+    icon: publishLockIcon,
   },
   {
     title: 'Someone reports a find',
     body: 'A finder browses open listings and flags the one that matches what they found.',
+    icon: reportFindIcon,
   },
   {
     title: 'Coordinate the handover',
     body: 'Owner and finder message each other through the listing to arrange a place and time.',
+    icon: coordinateIcon,
   },
   {
     title: 'Confirm & release',
     body: 'The owner confirms recovery and the contract releases the reward to the finder automatically.',
+    icon: confirmReleaseIcon,
   },
 ]
 </script>
@@ -48,13 +56,16 @@ const steps = [
         <li
           v-for="(step, index) in steps"
           :key="step.title"
-          class="rounded-lg border border-border bg-surface p-5"
+          class="flex items-start gap-4 rounded-lg border border-border bg-surface p-5"
         >
-          <div class="flex items-baseline gap-2">
-            <span class="font-mono text-sm text-muted">{{ index + 1 }}</span>
-            <h3 class="font-semibold">{{ step.title }}</h3>
+          <img :src="step.icon" alt="" class="size-16 shrink-0 object-contain" />
+          <div class="flex flex-col">
+            <div class="flex items-baseline gap-2">
+              <span class="font-mono text-sm text-muted">{{ index + 1 }}</span>
+              <h3 class="font-semibold">{{ step.title }}</h3>
+            </div>
+            <p class="mt-2 text-sm text-muted">{{ step.body }}</p>
           </div>
-          <p class="mt-2 text-sm text-muted">{{ step.body }}</p>
         </li>
       </ol>
     </section>
