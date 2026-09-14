@@ -35,7 +35,11 @@ onMounted(() => {
   </header>
 
   <main class="mx-auto max-w-5xl px-4 py-8">
-    <RouterView />
+    <RouterView v-slot="{ Component }">
+      <Transition name="page-fade" mode="out-in">
+        <component :is="Component" />
+      </Transition>
+    </RouterView>
   </main>
 
   <ToastContainer />
@@ -54,5 +58,18 @@ onMounted(() => {
 .nav-link.router-link-active {
   color: var(--color-heading);
   font-weight: 600;
+}
+
+.page-fade-enter-active,
+.page-fade-leave-active {
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease;
+}
+
+.page-fade-enter-from,
+.page-fade-leave-to {
+  opacity: 0;
+  transform: translateY(4px);
 }
 </style>
