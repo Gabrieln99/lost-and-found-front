@@ -17,6 +17,7 @@ vi.mock('@/services/listingContract', async (importOriginal) => {
 
 import { useListingActions } from '../useListingActions'
 import { useWalletStore } from '@/stores/wallet'
+import { useToasts } from '@/composables/useToasts'
 import {
   sendReportFoundTx,
   waitForActionReceipt,
@@ -69,6 +70,7 @@ describe('useListingActions', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
+    useToasts().toasts.value.splice(0)
   })
 
   it('does not throw and stays inert when the source listing is null', () => {
@@ -130,6 +132,13 @@ describe('useListingActions', () => {
     expect(api.currentListing.value.status).toBe(1)
     expect(api.actionStatus.value).toBe('success')
     expect(api.actionSuccessMessage.value).toContain('reported this item as found')
+
+    const { toasts } = useToasts()
+    expect(toasts.value).toHaveLength(1)
+    expect(toasts.value[0]).toMatchObject({
+      tone: 'success',
+      message: api.actionSuccessMessage.value,
+    })
   })
 
   it('surfaces a ListingContractError and stays usable', async () => {
@@ -142,6 +151,10 @@ describe('useListingActions', () => {
     expect(api.actionStatus.value).toBe('error')
     expect(api.actionError.value).toBe('Rejected in wallet.')
     expect(api.isActing.value).toBe(false)
+
+    const { toasts } = useToasts()
+    expect(toasts.value).toHaveLength(1)
+    expect(toasts.value[0]).toMatchObject({ tone: 'danger', message: 'Rejected in wallet.' })
   })
 
   it('cancelAction abandons the in-flight request without an error', async () => {
@@ -158,5 +171,10 @@ describe('useListingActions', () => {
 
     expect(api.actionStatus.value).toBe('idle')
     expect(api.actionError.value).toBe('')
+
+    // A user-initiated cancel isn't a failure -- it shouldn't surface an
+    // error toast.
+    const { toasts } = useToasts()
+    expect(toasts.value).toHaveLength(0)
   })
 })
