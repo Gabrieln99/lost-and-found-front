@@ -17,6 +17,7 @@ vi.mock('@/services/ipfsMetadata', () => ({
 
 import BrowseListingsView from '../BrowseListingsView.vue'
 import ListingCard from '@/components/ListingCard.vue'
+import ListingCardSkeleton from '@/components/ListingCardSkeleton.vue'
 import { useWalletStore } from '@/stores/wallet'
 import { fetchAllListings, ListingContractError } from '@/services/listingContract'
 import { fetchListingMetadata } from '@/services/ipfsMetadata'
@@ -55,6 +56,17 @@ describe('BrowseListingsView', () => {
 
     expect(wrapper.text()).toContain('Connect your wallet to browse listings.')
     expect(fetchAllListings).not.toHaveBeenCalled()
+  })
+
+  it('shows skeleton placeholder cards while listings are loading', async () => {
+    connectWallet()
+    fetchAllListings.mockReturnValue(new Promise(() => {})) // never resolves
+
+    const wrapper = mount(BrowseListingsView)
+    await flushPromises()
+
+    expect(wrapper.findAllComponents(ListingCardSkeleton).length).toBe(6)
+    expect(wrapper.findAllComponents(ListingCard).length).toBe(0)
   })
 
   it('shows the empty state when there are no listings', async () => {
