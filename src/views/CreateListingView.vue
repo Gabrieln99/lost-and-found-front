@@ -2,6 +2,7 @@
 import { ref, computed, watch, nextTick } from 'vue'
 import { useForm, useField } from 'vee-validate'
 import { parseEther } from 'ethers'
+import { VueDatePicker } from '@vuepic/vue-datepicker'
 import { useWalletStore } from '@/stores/wallet'
 import { uploadListingMetadata, StorageServiceError } from '@/services/storageService'
 import {
@@ -249,7 +250,14 @@ function cancelSubmit() {
       </FormField>
 
       <FormField label="Expires (optional)" field-id="expirationDate" :error="expirationDateError">
-        <input id="expirationDate" v-model="expirationDate" type="datetime-local" />
+        <VueDatePicker
+          v-model="expirationDate"
+          :input-attrs="{ id: 'expirationDate' }"
+          :min-date="new Date()"
+          placeholder="No expiration"
+          auto-apply
+          teleport
+        />
       </FormField>
 
       <Alert v-if="walletBlockReason && status === 'idle'" tone="warning">

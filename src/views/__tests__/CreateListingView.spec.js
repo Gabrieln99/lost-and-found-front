@@ -14,6 +14,7 @@ vi.mock('@/services/listingContract', () => ({
 }))
 
 import CreateListingView from '../CreateListingView.vue'
+import { VueDatePicker } from '@vuepic/vue-datepicker'
 import { useWalletStore } from '@/stores/wallet'
 import { uploadListingMetadata, StorageServiceError } from '@/services/storageService'
 import {
@@ -298,5 +299,63 @@ describe('CreateListingView', () => {
   it('gives the description textarea no manual resize handle', () => {
     const wrapper = mount(CreateListingView)
     expect(wrapper.find('#description').classes()).toContain('resize-none')
+  })
+
+  // Regression test for the datetime-local -> VueDatePicker swap: the
+  // picker's v-model emits a JS Date object (not the old
+  // "YYYY-MM-DDTHH:mm" string), and it's easy to silently break the
+  // Date -> Unix-seconds conversion the contract expects when changing what
+  // shape the field's value takes.
+  it('converts the picked expiration date/time to the correct Unix-seconds timestamp for the contract', async () => {
+    const store = connectWallet()
+    uploadListingMetadata.mockResolvedValue('bafymetadatacid')
+    const fakeTx = {}
+    sendCreateListingTx.mockResolvedValue(fakeTx)
+    waitForListingReceipt.mockResolvedValue({ listingId: 3n, transactionHash: '0xabc' })
+
+    const wrapper = mount(CreateListingView)
+    await fillValidForm(wrapper)
+
+    const pickedDate = new Date('2030-06-15T14:30:00')
+    await wrapper.findComponent(VueDatePicker).vm.$emit('update:modelValue', pickedDate)
+
+    await submitAndSettle(wrapper)
+
+    const expectedTimestamp = BigInt(Math.floor(pickedDate.getTime() / 1000))
+    expect(sendCreateListingTx).toHaveBeenCalledWith(
+      store.contract,
+      expect.objectContaining({ expirationTimestamp: expectedTimestamp }),
+    )
+  })
+
+  it('sends an expirationTimestamp of 0 when no expiration date is picked', async () => {
+    const store = connectWallet()
+    uploadListingMetadata.mockResolvedValue('bafymetadatacid')
+    sendCreateListingTx.mockResolvedValue({})
+    waitForListingReceipt.mockResolvedValue({ listingId: 3n, transactionHash: '0xabc' })
+
+    const wrapper = mount(CreateListingView)
+    await fillValidForm(wrapper)
+
+    await submitAndSettle(wrapper)
+
+    expect(sendCreateListingTx).toHaveBeenCalledWith(
+      store.contract,
+      expect.objectContaining({ expirationTimestamp: 0n }),
+    )
+  })
+
+  it('rejects a picked expiration date/time that is in the past', async () => {
+    connectWallet()
+    const wrapper = mount(CreateListingView)
+    await fillValidForm(wrapper)
+
+    const pastDate = new Date('2000-01-01T00:00:00')
+    await wrapper.findComponent(VueDatePicker).vm.$emit('update:modelValue', pastDate)
+
+    await submitAndSettle(wrapper)
+
+    expect(wrapper.text()).toContain('Expiration must be in the future.')
+    expect(sendCreateListingTx).not.toHaveBeenCalled()
   })
 })
