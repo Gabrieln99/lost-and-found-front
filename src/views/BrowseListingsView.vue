@@ -5,6 +5,7 @@ import { fetchAllListings, STATUS_LABELS, ListingContractError } from '@/service
 import { fetchListingMetadata } from '@/services/ipfsMetadata'
 import { filterByStatus, searchListings, paginate, totalPages, clampPage } from '@/utils/listingFilters'
 import ListingCard from '@/components/ListingCard.vue'
+import ListingCardSkeleton from '@/components/ListingCardSkeleton.vue'
 import Button from '@/components/ui/Button.vue'
 import Alert from '@/components/ui/Alert.vue'
 
@@ -136,7 +137,12 @@ function goToPage(page) {
       </label>
     </div>
 
-    <p v-if="loading" class="text-sm text-muted">Loading listings…</p>
+    <div
+      v-if="loading && listings.length === 0"
+      class="listing-grid grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(16rem,1fr))]"
+    >
+      <ListingCardSkeleton v-for="n in 6" :key="n" />
+    </div>
     <Alert v-else-if="loadError" tone="danger" class="load-error">{{ loadError }}</Alert>
     <p v-else-if="wallet.contract && listings.length === 0" class="text-sm text-muted">
       No listings yet.
