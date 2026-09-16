@@ -4,6 +4,7 @@ Lost & Found je decentralizirana aplikacija za oglašavanje i pronalazak izgublj
 
 Projekt je izrađen u sklopu kolegija Raspodijeljeni sustavi i Blockchain aplikacije.
 
+## UML use case dijagram
 <img width="2920" height="2378" alt="use_case_rs_ba" src="https://github.com/user-attachments/assets/b49d63a4-67f1-4d28-b868-771d39ac156b" />
 
 
