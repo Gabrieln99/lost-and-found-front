@@ -1,4 +1,4 @@
-# Lost and Found aplikacija — projekt README
+# Lost and Found aplikacija projekt README
 
 Lost & Found je decentralizirana aplikacija za oglašavanje i pronalazak izgubljenih stvari. Vlasnik objavi što je izgubio i zaključa nagradu u pametnom ugovoru na blockchainu; novac automatski ode nalazniku tek kad vlasnik potvrdi da je stvar stvarno vratio, bez ikakvog posrednika koji uzima proviziju. Sustav je podijeljen na više neovisnih mikroservisa: frontend koji ovaj repozitorij sadrži (povezivanje s MetaMask walletom, objava i pregled oglasa, chat za dogovor primopredaje), storage servis (zaseban repozitorij lost-and-found-back, upravlja slikama i porukama), i sam pametni ugovor.
 
