@@ -8,6 +8,7 @@ Projekt je izrađen u sklopu kolegija Raspodijeljeni sustavi i Blockchain aplika
 
 - App: https://lost-and-found-rs-ba.netlify.app
 - Backend repository (contract + storage service): https://github.com/Gabrieln99/lost-and-found-back
+- YouTube video (demonstracija projekta): https://youtu.be/uteBMT3GYY8
 - Shared project docs: https://github.com/Gabrieln99/lost-and-found-project
 
 ## Tech stack
